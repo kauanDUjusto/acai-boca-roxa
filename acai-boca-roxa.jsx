@@ -159,21 +159,11 @@ function playNewOrderSound() {
   };
 
   function getDeliveryStatus(config, date = new Date()) {
-    const parts = new Intl.DateTimeFormat("en-US", {
-      timeZone: "America/Sao_Paulo",
-      hour: "2-digit",
-      minute: "2-digit",
-      hourCycle: "h23",
-    }).formatToParts(date);
-    const hour = Number(parts.find((part) => part.type === "hour")?.value || 0);
-    const minute = Number(parts.find((part) => part.type === "minute")?.value || 0);
-    const minutes = hour * 60 + minute;
-    const withinSchedule = minutes >= 13 * 60 && minutes < 18 * 60;
-    const manuallyClosed = config.delivery_manual_closed === true || config.delivery_enabled === false;
+    const open = config.delivery_enabled === true;
 
     return {
-      open: withinSchedule && !manuallyClosed,
-      reason: !withinSchedule ? "horario" : manuallyClosed ? "manual" : "aberto",
+      open,
+      reason: open ? "aberto" : "manual",
     };
   }
 
