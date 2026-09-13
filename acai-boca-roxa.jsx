@@ -308,6 +308,41 @@ async function playNewOrderSound() {
     return calculateProductPrice(item, prices).total;
   }
 
+  /* ============================================================
+    IDENTIFICAÇÃO DE INGREDIENTES/FRUTAS EXTRAS NA COMANDA
+    Usa a mesma regra (rule.ingredientLimit / rule.fruitLimit) que já
+    define os extras no resumo do pedido (ver step 3 do BuilderSection).
+    Pedidos antigos sem essa informação continuam exibindo os itens
+    normalmente, sem marcação de extra.
+    ============================================================ */
+
+  function getIngredientDisplayList(item) {
+    const limit = item.calculation?.rule?.ingredientLimit;
+    return (item.ingredients || []).map((ing, index) =>
+      typeof limit === "number" && index >= limit ? `Ingrediente extra: ${ing.name}` : ing.name
+    );
+  }
+
+  function getFruitDisplayList(item) {
+    const limit = item.calculation?.rule?.fruitLimit;
+    return (item.fruits || []).map((fruit, index) =>
+      typeof limit === "number" && index >= limit ? `Fruta extra: ${fruit.name}` : fruit.name
+    );
+  }
+
+  /* ============================================================
+    CÓDIGO DO PEDIDO
+    Somente números, sem prefixo. Timestamp (ms) + 3 dígitos
+    aleatórios para reduzir risco de colisão em cliques quase
+    simultâneos. Pedidos antigos no formato "ped-..." continuam
+    funcionando normalmente (a busca é sempre por igualdade exata
+    do id, sem depender do formato).
+    ============================================================ */
+
+  function generateOrderId() {
+    return `${Date.now()}${Math.floor(100 + Math.random() * 900)}`;
+  }
+
   function buildWhatsAppMessage(cart, customer, prices, subtotal, deliveryFee, orderId = null) {
     const lines = [];
     const isRetirada = customer.deliveryRegion === "Retirada";
@@ -321,11 +356,11 @@ async function playNewOrderSound() {
       lines.push(`${item.qty}x ${itemLabel(item.category, item.size)}`);
       if (item.ingredients?.length) {
         lines.push("Ingredientes:");
-        item.ingredients.forEach((ing) => lines.push(`- ${ing.name}`));
+        getIngredientDisplayList(item).forEach((label) => lines.push(`- ${label}`));
       }
       if (item.fruits?.length) {
         lines.push("Frutas (copinho separado de 100 ml quando aplicável):");
-        item.fruits.forEach((fruit) => lines.push(`- ${fruit.name}`));
+        getFruitDisplayList(item).forEach((label) => lines.push(`- ${label}`));
       }
       if (item.topping) lines.push(`Cobertura: ${item.topping.name} (incluída)`);
       if (item.calculation?.ingredientExcessPrice) lines.push(`Ingredientes extras: ${formatBRL(item.calculation.ingredientExcessPrice)}`);
@@ -640,7 +675,7 @@ async function playNewOrderSound() {
               type="text"
               value={orderId}
               onChange={(e) => setOrderId(e.target.value)}
-              placeholder="Código do pedido (ex: ped-1234567890)"
+              placeholder="Código do pedido (ex: 1789268877786)"
               className="flex-1 rounded-xl border border-purple-200 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-purple-400"
             />
             <button
@@ -1043,30 +1078,53 @@ function CheckoutModal({ cart, prices, config, deliveryStatus, onClose, onSent }
     const [form, setForm] = useState({ name: "", phone: "", address: "", note: "", payment: "", deliveryRegion: "" });
     const [orderType, setOrderType] = useState("delivery"); // "delivery" ou "retirada"
     const [submitError, setSubmitError] = useState("");
+    const [sending, setSending] = useState(false); // evita pedidos duplicados em cliques repetidos
     const subtotal = cart.reduce((s, i) => s + unitPrice(i, prices) * i.qty, 0);
     const deliveryFee = orderType === "retirada" ? 0 : DELIVERY_FEES[form.deliveryRegion];
     const total = subtotal + (deliveryFee ?? 0);
     const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
     const canSend = form.name.trim() && form.phone.trim() && form.payment && (orderType === "retirada" || (form.address.trim() && deliveryFee !== undefined)) && deliveryStatus.open;
 
-    const handleSend = async () => {
+    // IMPORTANTE: o WhatsApp é aberto de forma síncrona, antes de qualquer
+    // "await", para abrir imediatamente após o clique (alguns navegadores,
+    // principalmente no celular, só permitem window.open sem bloqueio de
+    // pop-up quando ele acontece dentro do mesmo gesto de clique do
+    // usuário). O registro no Supabase acontece depois, sem atrasar o
+    // WhatsApp.
+    const handleSend = () => {
+      if (sending) return; // proteção contra cliques repetidos
       setSubmitError("");
       if (orderType === "delivery" && !deliveryStatus.open) {
         setSubmitError("Delivery fechado no momento. No momento não estamos aceitando novos pedidos.");
         return;
       }
 
-      const result = await onSent(form, subtotal, deliveryFee, orderType);
-      if (!result?.ok) {
-        setSubmitError(result?.message || "Não foi possível enviar o pedido.");
+      setSending(true);
+
+      const orderId = generateOrderId();
+      const msg = buildWhatsAppMessage(cart, form, prices, subtotal, deliveryFee, orderId);
+      const whatsappWindow = window.open(`https://wa.me/${config.whatsapp}?text=${encodeURIComponent(msg)}`, "_blank");
+
+      if (!whatsappWindow) {
+        setSending(false);
+        setSubmitError("O navegador bloqueou a abertura do WhatsApp. Permita pop-ups para este site e tente novamente.");
         return;
       }
 
-      const msg = buildWhatsAppMessage(cart, form, prices, subtotal, deliveryFee, result.orderId);
-      window.open(`https://wa.me/${config.whatsapp}?text=${encodeURIComponent(msg)}`, "_blank");
+      // A partir daqui o pedido é registrado no Supabase em segundo plano.
+      (async () => {
+        const result = await onSent(form, subtotal, deliveryFee, orderType, orderId);
+        setSending(false);
 
-      onClose();
-      onSent({ ok: true, orderId: result.orderId });
+        if (!result?.ok) {
+          setSubmitError(
+            `O pedido foi enviado pelo WhatsApp, mas houve um problema ao registrar no sistema (${result?.message || "erro desconhecido"}). Guarde o código ${orderId} e entre em contato com a loja para confirmar.`
+          );
+          return;
+        }
+
+        onClose();
+      })();
     };
 
     return (
@@ -1074,8 +1132,8 @@ function CheckoutModal({ cart, prices, config, deliveryStatus, onClose, onSent }
         title="Finalizar pedido"
         onClose={onClose}
         footer={
-          <button disabled={!canSend} onClick={handleSend} className={`w-full py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 transition-all ${canSend ? "bg-purple-800 text-white hover:bg-purple-900 active:scale-[.98]" : "bg-purple-100 text-purple-400 cursor-not-allowed"}`}>
-            <MessageCircle size={18} /> Enviar pedido pelo WhatsApp
+          <button disabled={!canSend || sending} onClick={handleSend} className={`w-full py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 transition-all ${canSend && !sending ? "bg-purple-800 text-white hover:bg-purple-900 active:scale-[.98]" : "bg-purple-100 text-purple-400 cursor-not-allowed"}`}>
+            <MessageCircle size={18} /> {sending ? "Enviando..." : "Enviar pedido pelo WhatsApp"}
           </button>
         }
       >
@@ -1710,17 +1768,17 @@ function printOrder(order) {
 
           ${
             item.ingredients?.length
-              ? `<div>Ingredientes: ${escapeHtml(
-                  item.ingredients.map((ingredient) => ingredient.name).join(", ")
-                )}</div>`
+              ? `<div>Ingredientes:</div>${getIngredientDisplayList(item)
+                  .map((label) => `<div>- ${escapeHtml(label)}</div>`)
+                  .join("")}`
               : ""
           }
 
           ${
             item.fruits?.length
-              ? `<div>Frutas: ${escapeHtml(
-                  item.fruits.map((fruit) => fruit.name).join(", ")
-                )}</div>`
+              ? `<div>Frutas:</div>${getFruitDisplayList(item)
+                  .map((label) => `<div>- ${escapeHtml(label)}</div>`)
+                  .join("")}`
               : ""
           }
 
@@ -2882,8 +2940,12 @@ function AdminOrdersTab({ orders, setOrders, showFinance = false }) {
               {selectedOrder.items?.map((item, index) => (
                 <div key={index} className="border-b border-purple-100 pb-3 text-sm">
                   <p className="font-bold">{item.qty}x {itemLabel(item.category, item.size)}</p>
-                  {item.ingredients?.length > 0 && <p><strong>Ingredientes:</strong> {item.ingredients.map((ingredient) => ingredient.name).join(", ")}</p>}
-                  {item.fruits?.length > 0 && <p><strong>Frutas:</strong> {item.fruits.map((fruit) => fruit.name).join(", ")}</p>}
+                  {item.ingredients?.length > 0 && (
+                    <p><strong>Ingredientes:</strong> {getIngredientDisplayList(item).join(", ")}</p>
+                  )}
+                  {item.fruits?.length > 0 && (
+                    <p><strong>Frutas:</strong> {getFruitDisplayList(item).join(", ")}</p>
+                  )}
                   {item.topping && <p><strong>Cobertura:</strong> {item.topping.name}</p>}
                   {item.calculation?.ingredientExcessPrice > 0 && <p><strong>Ingredientes extras:</strong> {formatBRL(item.calculation.ingredientExcessPrice)}</p>}
                   {item.calculation?.fruitExcessPrice > 0 && <p><strong>Frutas extras:</strong> {formatBRL(item.calculation.fruitExcessPrice)}</p>}
@@ -3176,7 +3238,7 @@ useEffect(() => {
   };
   const cartCount = cart.reduce((s, i) => s + i.qty, 0);
 
-  const handleOrderSent = async (customer, subtotal, deliveryFee, orderType = "delivery") => {
+  const handleOrderSent = async (customer, subtotal, deliveryFee, orderType = "delivery", orderId) => {
     if (!customer.payment) {
       return { ok: false, message: "Selecione uma forma de pagamento para continuar." };
     }
@@ -3205,7 +3267,7 @@ useEffect(() => {
     const finalDeliveryFee = orderType === "retirada" ? 0 : deliveryFee;
 
     const order = {
-      id: `ped-${Date.now()}`,
+      id: orderId || generateOrderId(),
       createdAt: new Date().toISOString(),
       customer: {
         ...customer,
