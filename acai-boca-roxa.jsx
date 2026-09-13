@@ -29,35 +29,42 @@ function initializeAudioContext() {
   }
 }
 
-function playNewOrderSound() {
+async function playNewOrderSound() {
   const context = initializeAudioContext();
   if (!context) return;
 
-  // Tenta resumir o AudioContext se estiver suspenso
-  if (context.state === "suspended") {
-    context.resume().catch((error) => {
-      console.error("Erro ao resumir AudioContext:", error);
-    });
-  }
-
-  // Verifica se o contexto está pronto para reprodução
-  if (context.state !== "running") {
-    console.warn("AudioContext não está pronto para reprodução:", context.state);
-    return;
-  }
-
   try {
+    if (context.state === "suspended") {
+      await context.resume();
+    }
+
+    if (context.state !== "running") {
+      console.warn("AudioContext não está pronto para reprodução:", context.state);
+      return;
+    }
+
     const now = context.currentTime;
+
     [0, 0.22, 0.44].forEach((offset, index) => {
       const oscillator = context.createOscillator();
       const gain = context.createGain();
+
       oscillator.type = "sine";
       oscillator.frequency.value = [880, 1046, 1318][index];
+
       gain.gain.setValueAtTime(0.0001, now + offset);
-      gain.gain.exponentialRampToValueAtTime(0.16, now + offset + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.0001, now + offset + 0.18);
+      gain.gain.exponentialRampToValueAtTime(
+        0.16,
+        now + offset + 0.02
+      );
+      gain.gain.exponentialRampToValueAtTime(
+        0.0001,
+        now + offset + 0.18
+      );
+
       oscillator.connect(gain);
       gain.connect(context.destination);
+
       oscillator.start(now + offset);
       oscillator.stop(now + offset + 0.2);
     });
@@ -65,7 +72,6 @@ function playNewOrderSound() {
     console.error("Erro ao reproduzir som:", error);
   }
 }
-
   /* ============================================================
     ASSETS DA MARCA (logo e arte de divulgação reais, enviados pelo cliente)
     ============================================================ */
@@ -3151,9 +3157,8 @@ useEffect(() => {
     localStorage.setItem("acai_boca_roxa_admin_sound_enabled", String(nextEnabled));
 
     if (nextEnabled) {
-      // Toca um som de teste para confirmar que o áudio está funcionando
-      setTimeout(() => playNewOrderSound(), 100);
-    }
+  await playNewOrderSound();
+}
   };
 
   const scrollTo = (id) => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
