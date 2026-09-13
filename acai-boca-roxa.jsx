@@ -509,14 +509,14 @@ async function playNewOrderSound() {
     ];
     return (
       <header className="sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-purple-100">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center">
           <Logo size={36} />
-          <nav className="hidden lg:flex items-center gap-8">
+          <nav className="hidden lg:flex items-center gap-6">
             {links.map(([id, label]) => (
               <button key={id} onClick={() => onNav(id)} className="text-sm font-medium text-purple-800 hover:text-purple-950 transition-colors">{label}</button>
             ))}
           </nav>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 lg:ml-8">
             <button onClick={() => onNav("cardapio")} className="hidden sm:flex items-center gap-1.5 bg-purple-800 text-white text-sm font-semibold px-4 py-2.5 rounded-full hover:bg-purple-900 active:scale-95 transition-all">
               Fazer pedido <ChevronRight size={15} />
             </button>
