@@ -2487,12 +2487,7 @@ function AdminOrdersTab({ orders, setOrders, showFinance = false }) {
       updated_at: new Date().toISOString(),
     };
 
-    // Adiciona horário de saída quando pedido sai para entrega
-    if (newStatus === "a_caminho" && order.status !== "a_caminho") {
-      updateData.delivery_started_at = new Date().toISOString();
-      console.log("Registrando horário de saída:", updateData.delivery_started_at);
-    }
-
+ 
     console.log("Dados para atualização:", updateData);
 
     const { error } = await supabase
