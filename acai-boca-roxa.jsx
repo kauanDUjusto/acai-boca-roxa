@@ -1683,6 +1683,8 @@ function CounterOrderModal({
   const [items, setItems] = useState([]);
   const [addModal, setAddModal] = useState(null);
   const [paymentMethod, setPaymentMethod] = useState("");
+  const [customerName, setCustomerName] = useState("");
+  const [consumeType, setConsumeType] = useState("");
 
   const total = items.reduce(
     (sum, item) => sum + (Number(item.finalPrice) || 0) * (Number(item.qty) || 1),
@@ -1726,10 +1728,10 @@ function CounterOrderModal({
       id: `balcão-${Date.now()}`,
       createdAt: new Date().toISOString(),
       customer: {
-        name: "Cliente do balcão",
-        address: "Balcão",
+        name: customerName || "Cliente do balcão",
+        address: consumeType === "local" ? "Comer no local" : "Para levar",
         payment: paymentMethod,
-        note: "Pedido balcão",
+        note: `Pedido balcão - ${consumeType === "local" ? "Comer no local" : "Para levar"}`,
       },
       items: items,
       subtotal: total,
@@ -1765,6 +1767,8 @@ function CounterOrderModal({
 
     setItems([]);
     setPaymentMethod("");
+    setCustomerName("");
+    setConsumeType("");
     onClose();
   };
 
@@ -1803,7 +1807,7 @@ function CounterOrderModal({
 
             <button
               onClick={finalizeOrder}
-              disabled={items.length === 0 || !paymentMethod}
+              disabled={items.length === 0 || !paymentMethod || !consumeType}
               className="w-full rounded-xl bg-purple-800 py-3 font-bold text-white hover:bg-purple-900 disabled:cursor-not-allowed disabled:opacity-40"
             >
               Finalizar comanda
@@ -1812,6 +1816,43 @@ function CounterOrderModal({
         }
       >
         <div className="space-y-4">
+          <div>
+            <p className="text-sm font-bold text-purple-950">
+              Dados do cliente
+            </p>
+
+            <input
+              type="text"
+              value={customerName}
+              onChange={(e) => setCustomerName(e.target.value)}
+              placeholder="Nome do cliente (opcional)"
+              className="w-full mt-2 rounded-xl border border-purple-200 bg-white px-4 py-3 text-sm font-semibold text-purple-950 outline-none focus:border-purple-500"
+            />
+
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <button
+                onClick={() => setConsumeType("local")}
+                className={`rounded-xl border px-4 py-3 text-sm font-semibold transition-all ${
+                  consumeType === "local"
+                    ? "border-purple-700 bg-purple-50 text-purple-950"
+                    : "border-purple-200 bg-white text-purple-700 hover:border-purple-300"
+                }`}
+              >
+                🍽️ Comer no local
+              </button>
+              <button
+                onClick={() => setConsumeType("levar")}
+                className={`rounded-xl border px-4 py-3 text-sm font-semibold transition-all ${
+                  consumeType === "levar"
+                    ? "border-purple-700 bg-purple-50 text-purple-950"
+                    : "border-purple-200 bg-white text-purple-700 hover:border-purple-300"
+                }`}
+              >
+                🥡 Para levar
+              </button>
+            </div>
+          </div>
+
           <div>
             <p className="text-sm font-bold text-purple-950">
               Adicionar produto
