@@ -514,6 +514,10 @@ function playNewOrderSound() {
             <p className="mt-5 text-purple-100/90 text-lg max-w-md mx-auto md:mx-0">
               Açaí, cupuaçu e combinações deliciosas para deixar seu momento ainda melhor.
             </p>
+            <div className="mt-6 inline-flex items-center gap-2 bg-white/10 backdrop-blur-sm px-4 py-2 rounded-full text-sm text-purple-100">
+              <Clock size={16} />
+              <span>🚗 Delivery: 13h às 18h</span>
+            </div>
             <div className="mt-8 flex flex-col sm:flex-row gap-3 justify-center md:justify-start">
               <button onClick={() => onNav("cardapio")} className="bg-white text-purple-900 font-bold px-7 py-3.5 rounded-full hover:bg-purple-50 active:scale-95 transition-all">Ver cardápio</button>
               <button onClick={() => onNav("monte")} className="border border-purple-300/50 text-white font-semibold px-7 py-3.5 rounded-full hover:bg-white/10 active:scale-95 transition-all">Monte seu açaí</button>
@@ -1045,6 +1049,7 @@ function Footer({ config, onNav }) {
         <div className="text-center sm:text-left">
           <p className="text-white font-black text-lg" style={{ fontFamily: "'Fraunces', serif" }}>Açaí Boca Roxa</p>
           <p className="text-sm text-purple-300">Seu açaí do seu jeito. 💜</p>
+          <p className="mt-2 text-xs text-purple-400">🚗 Delivery: 13h às 18h</p>
         </div>
         <div className="flex gap-6 text-sm">
           <button onClick={() => onNav("inicio")} className="hover:text-white">Início</button>
