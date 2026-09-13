@@ -388,12 +388,12 @@ function playNewOrderSound() {
             <button
               key={ing.id}
               onClick={() => onToggle(ing)}
-              className={`relative text-left px-3 py-2.5 rounded-xl border text-sm transition-all duration-150 ${
+              className={`relative text-left px-3 py-2.5 rounded-xl border text-sm transition-all duration-150 min-w-full ${
                 active ? "border-purple-700 bg-purple-50 ring-1 ring-purple-700" : "border-purple-100 bg-white hover:border-purple-300"
               }`}
             >
               <div className="flex items-center justify-between gap-1">
-                <span className="font-medium text-purple-950">{ing.name}</span>
+                <span className="font-medium text-purple-950 truncate">{ing.name}</span>
                 {active && <Check size={15} className="text-purple-700 shrink-0" />}
               </div>
               <span className={`text-xs ${!showPrices && !active ? "text-emerald-600" : active && !showPrices ? (selected.findIndex((item) => item.id === ing.id) >= includedLimit ? "text-pink-600" : "text-emerald-600") : ing.free ? "text-emerald-600" : "text-pink-600"}`}>
