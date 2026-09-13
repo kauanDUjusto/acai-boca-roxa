@@ -213,6 +213,7 @@ function playNewOrderSound() {
       deliveryFee: order.delivery_fee,
       paymentMethod: order.payment_method || "",
       orderSource: order.order_source || "delivery",
+      deliveryStartedAt: order.delivery_started_at,
     };
   }
 
@@ -948,8 +949,9 @@ function generatePixPayload(amount) {
   const statusSteps = [
     { key: "novo", label: "Recebido", icon: "📝" },
     { key: "preparando", label: "Preparando", icon: "🍳" },
+    { key: "aguardando_motoboy", label: "Aguardando motoboy", icon: "⏳" },
     { key: "a_caminho", label: "A caminho", icon: "🚗" },
-    { key: "concluido", label: "Concluído", icon: "✅" },
+    { key: "concluido", label: "Entregue", icon: "✅" },
   ];
 
   const currentStepIndex = order ? statusSteps.findIndex(step => step.key === order.status) : 0;
@@ -2296,13 +2298,13 @@ function AdminOrdersTab({ orders, setOrders, showFinance = false }) {
     result.payments[payment].total += Number(order.total) || 0;
     result.totalOrders += 1;
     if (order.status === "concluido") result.completedOrders += 1;
-    if (order.status === "novo") result.newOrders += 1;
+    if (order.status === "novo" || order.status === "preparando" || order.status === "aguardando_motoboy" || order.status === "a_caminho") result.openOrders += 1;
     return result;
   }, {
     total: 0,
     totalOrders: 0,
     completedOrders: 0,
-    newOrders: 0,
+    openOrders: 0,
     payments: Object.fromEntries(paymentOptions.map((payment) => [payment, { count: 0, total: 0 }])),
   });
 
@@ -2318,13 +2320,13 @@ function AdminOrdersTab({ orders, setOrders, showFinance = false }) {
     result.total += Number(order.total) || 0;
     result.totalOrders += 1;
     if (order.status === "concluido") result.completedOrders += 1;
-    if (order.status === "novo") result.newOrders += 1;
+    if (order.status === "novo" || order.status === "preparando" || order.status === "aguardando_motoboy" || order.status === "a_caminho") result.openOrders += 1;
     return result;
   }, {
     total: 0,
     totalOrders: 0,
     completedOrders: 0,
-    newOrders: 0,
+    openOrders: 0,
   });
 
   const monthlyAverageTicket = monthlySummary.totalOrders > 0 ? monthlySummary.total / monthlySummary.totalOrders : 0;
@@ -2470,6 +2472,40 @@ function AdminOrdersTab({ orders, setOrders, showFinance = false }) {
     setCounter(nextCounter);
     await saveCounter(nextCounter);
   };
+  const setOrderStatus = async (id, newStatus) => {
+    const order = orders.find((o) => o.id === id);
+
+    if (!order) return;
+
+    const updateData = {
+      status: newStatus,
+      updated_at: new Date().toISOString(),
+    };
+
+    // Adiciona horário de saída quando pedido sai para entrega
+    if (newStatus === "a_caminho" && order.status !== "a_caminho") {
+      updateData.delivery_started_at = new Date().toISOString();
+    }
+
+    const { error } = await supabase
+      .from("site_orders")
+      .update(updateData)
+      .eq("id", id);
+
+    if (error) {
+      console.error("ERRO AO ATUALIZAR PEDIDO:", error);
+      return;
+    }
+
+    setOrders((prev) =>
+      prev.map((o) =>
+        o.id === id
+          ? { ...o, ...updateData }
+          : o
+      )
+    );
+  };
+
   const toggleStatus = async (id) => {
     const order = orders.find((o) => o.id === id);
 
@@ -2559,7 +2595,7 @@ function AdminOrdersTab({ orders, setOrders, showFinance = false }) {
             <div className="text-center">
               <p className="text-xs text-purple-600">Status</p>
               <p className="text-sm font-bold text-purple-950">
-                {periodSummary.completedOrders} concluídos · {periodSummary.newOrders} novos
+                {periodSummary.completedOrders} concluídos · {periodSummary.openOrders} em andamento
               </p>
             </div>
           </div>
@@ -2598,7 +2634,7 @@ function AdminOrdersTab({ orders, setOrders, showFinance = false }) {
             <div className="text-center">
               <p className="text-xs text-emerald-600">Status</p>
               <p className="text-sm font-bold text-emerald-950">
-                {monthlySummary.completedOrders} concluídos · {monthlySummary.newOrders} novos
+                {monthlySummary.completedOrders} concluídos · {monthlySummary.openOrders} em andamento
               </p>
             </div>
           </div>
@@ -2730,44 +2766,57 @@ function AdminOrdersTab({ orders, setOrders, showFinance = false }) {
               <span className={`text-xs font-semibold px-3 py-1 rounded-full ${
                 o.status === "novo" ? "bg-amber-100 text-amber-700" :
                 o.status === "preparando" ? "bg-blue-100 text-blue-700" :
+                o.status === "aguardando_motoboy" ? "bg-orange-100 text-orange-700" :
                 o.status === "a_caminho" ? "bg-purple-100 text-purple-700" :
                 "bg-emerald-100 text-emerald-700"
               }`}>
                 {o.status === "novo" ? "Novo" :
                  o.status === "preparando" ? "Preparando" :
+                 o.status === "aguardando_motoboy" ? "Aguardando motoboy" :
                  o.status === "a_caminho" ? "A caminho" :
                  "Concluído"}
               </span>
-              <div className="flex gap-1">
-                <button
-                  onClick={(event) => { event.stopPropagation(); setOrderStatus(o.id, "novo"); }}
-                  title="Marcar como novo"
-                  className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-lg border transition-colors ${o.status === "novo" ? "border-amber-700 bg-amber-50 text-amber-900" : "border-amber-200 text-amber-700 hover:bg-amber-50"}`}
-                >
-                  📝
-                </button>
+              
+              {/* Botões contextuais baseados no status */}
+              {o.status === "novo" && (
                 <button
                   onClick={(event) => { event.stopPropagation(); setOrderStatus(o.id, "preparando"); }}
-                  title="Marcar como preparando"
-                  className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-lg border transition-colors ${o.status === "preparando" ? "border-blue-700 bg-blue-50 text-blue-900" : "border-blue-200 text-blue-700 hover:bg-blue-50"}`}
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-colors"
                 >
-                  🍳
+                  <Check size={14} /> Aceitar pedido
                 </button>
+              )}
+              
+              {o.status === "preparando" && (
+                <button
+                  onClick={(event) => { event.stopPropagation(); setOrderStatus(o.id, "aguardando_motoboy"); }}
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100 transition-colors"
+                >
+                  <Check size={14} /> Pedido pronto
+                </button>
+              )}
+              
+              {o.status === "aguardando_motoboy" && (
                 <button
                   onClick={(event) => { event.stopPropagation(); setOrderStatus(o.id, "a_caminho"); }}
-                  title="Marcar como a caminho"
-                  className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-lg border transition-colors ${o.status === "a_caminho" ? "border-purple-700 bg-purple-50 text-purple-900" : "border-purple-200 text-purple-700 hover:bg-purple-50"}`}
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border border-purple-200 text-purple-700 bg-purple-50 hover:bg-purple-100 transition-colors"
                 >
-                  🚗
+                  🚗 Dar saída
                 </button>
+              )}
+              
+              {o.status === "a_caminho" && (
                 <button
                   onClick={(event) => { event.stopPropagation(); setOrderStatus(o.id, "concluido"); }}
-                  title="Marcar como concluído"
-                  className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-lg border transition-colors ${o.status === "concluido" ? "border-emerald-700 bg-emerald-50 text-emerald-900" : "border-emerald-200 text-emerald-700 hover:bg-emerald-50"}`}
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-colors"
                 >
-                  ✅
+                  <Check size={14} /> Entregue
                 </button>
-              </div>
+              )}
+              
+              {o.status === "concluido" && (
+                <span className="text-xs font-semibold text-emerald-600 px-2 py-1">✓ Pedido concluído</span>
+              )}
             </div>
           </div>
           <p className="font-semibold text-purple-950">{o.customer.name} · {o.customer.phone}</p>
