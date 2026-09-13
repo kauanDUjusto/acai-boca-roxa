@@ -8,6 +8,8 @@ import {
 
 import { supabase } from "./src/supabase.js";
 
+import { QRCodeSVG } from "qrcode.react";
+
 let adminAudioContext;
 
 function playNewOrderSound() {
@@ -87,7 +89,7 @@ function playNewOrderSound() {
     "Paranoá": 3,
     "Paranoá Parque": 4,
     "Torre Digital": 15,
-    "Borqueirão": 8,
+    "Boqueirão": 8,
     "Fazendinha": 6,
     "Água de Coco": 10,
   };
@@ -348,7 +350,7 @@ function playNewOrderSound() {
                 <span className="font-medium text-purple-950">{ing.name}</span>
                 {active && <Check size={15} className="text-purple-700 shrink-0" />}
               </div>
-              <span className={`text-xs ${active && !showPrices ? (selected.findIndex((item) => item.id === ing.id) >= includedLimit ? "text-pink-600" : "text-emerald-600") : ing.free ? "text-emerald-600" : "text-pink-600"}`}>
+              <span className={`text-xs ${!showPrices && !active ? "text-emerald-600" : active && !showPrices ? (selected.findIndex((item) => item.id === ing.id) >= includedLimit ? "text-pink-600" : "text-emerald-600") : ing.free ? "text-emerald-600" : "text-pink-600"}`}>
                 {!showPrices && active
                   ? selected.findIndex((item) => item.id === ing.id) >= includedLimit
                     ? `${extraLabel} +${formatBRL(PRODUCT_RULES.excessPrice)}`
@@ -757,6 +759,49 @@ function playNewOrderSound() {
   /* ============================================================
     CHECKOUT
     ============================================================ */
+function pixField(id, value) {
+  const text = String(value);
+  return `${id}${String(text.length).padStart(2, "0")}${text}`;
+}
+
+function crc16CCITT(payload) {
+  let crc = 0xffff;
+
+  for (let i = 0; i < payload.length; i++) {
+    crc ^= payload.charCodeAt(i) << 8;
+
+    for (let bit = 0; bit < 8; bit++) {
+      crc = (crc & 0x8000)
+        ? ((crc << 1) ^ 0x1021) & 0xffff
+        : (crc << 1) & 0xffff;
+    }
+  }
+
+  return crc.toString(16).toUpperCase().padStart(4, "0");
+}
+
+function generatePixPayload(amount) {
+  const amountText = Number(amount).toFixed(2);
+
+  const merchantAccountInformation =
+    pixField("00", "br.gov.bcb.pix") +
+    pixField("01", "06538583105");
+
+  const payload =
+    pixField("00", "01") +
+    pixField("26", merchantAccountInformation) +
+    pixField("52", "0000") +
+    pixField("53", "986") +
+    pixField("54", amountText) +
+    pixField("58", "BR") +
+    pixField("59", "ACAI BOCA ROXA") +
+    pixField("60", "PARANOA") +
+    pixField("62", pixField("05", "***")) +
+    "6304";
+
+  return payload + crc16CCITT(payload);
+}
+
 
   function CheckoutModal({ cart, prices, config, deliveryStatus, onClose, onSent }) {
     const [form, setForm] = useState({ name: "", phone: "", address: "", note: "", payment: "", deliveryRegion: "" });
@@ -814,17 +859,96 @@ function playNewOrderSound() {
           </div>
           <div><label className="text-sm font-medium text-purple-800">Observação</label>
             <textarea value={form.note} onChange={set("note")} rows={2} className="mt-1 w-full rounded-xl border border-purple-200 px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-purple-400" placeholder="Ex: sem açúcar, tocar interfone..." /></div>
-          <div>
-            <label className="text-sm font-medium text-purple-800 mb-1.5 block">Forma de pagamento</label>
-            <div className="flex gap-2">
-              {["Pix", "Dinheiro", "Cartão de crédito", "Cartão de débito"].map((p) => (
-                <button key={p} onClick={() => setForm((f) => ({ ...f, payment: p }))} className={`flex-1 py-2 rounded-xl text-sm font-semibold border-2 transition-all ${form.payment === p ? "border-purple-800 bg-purple-50 text-purple-900" : "border-purple-100 text-purple-600"}`}>{p}</button>
-              ))}
-            </div>
-          </div>
-          {!deliveryStatus.open && <p className="text-xs text-pink-600">Delivery fechado no momento. No momento não estamos aceitando novos pedidos.</p>}
-          {deliveryStatus.open && !canSend && <p className="text-xs text-pink-600">Preencha nome, telefone, região e forma de pagamento para continuar.</p>}
-          {submitError && <p className="text-xs text-pink-600">{submitError}</p>}
+<div>
+  <label className="text-sm font-medium text-purple-800 mb-1.5 block">
+    Forma de pagamento
+  </label>
+
+  <div className="flex gap-2">
+    {["Pix", "Dinheiro", "Cartão de crédito", "Cartão de débito"].map((p) => (
+      <button
+        key={p}
+        onClick={() => setForm((f) => ({ ...f, payment: p }))}
+        className={`flex-1 py-2 rounded-xl text-sm font-semibold border-2 transition-all ${
+          form.payment === p
+            ? "border-purple-800 bg-purple-50 text-purple-900"
+            : "border-purple-100 text-purple-600"
+        }`}
+      >
+        {p}
+      </button>
+    ))}
+  </div>
+
+  {form.payment === "Pix" && (
+    <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-center">
+      <p className="font-bold text-emerald-900">
+        Pagamento via PIX
+      </p>
+
+      <p className="mt-1 text-xs text-emerald-800">
+        Aponte a câmera do celular para o QR Code
+      </p>
+
+      <div className="mt-3 flex justify-center">
+        <div className="rounded-xl bg-white p-3 shadow-sm">
+          <QRCodeSVG
+            value={generatePixPayload(total)}
+            size={200}
+            level="M"
+          />
+        </div>
+      </div>
+
+      <p className="mt-3 text-xs font-medium text-emerald-900">
+        Valor: {formatBRL(total)}
+      </p>
+
+      <p className="mt-2 text-xs text-emerald-800">
+        Chave PIX (CPF): 06538583105
+      </p>
+
+<button
+  type="button"
+  onClick={async () => {
+    const pixCode = generatePixPayload(total);
+
+    try {
+      await navigator.clipboard.writeText(pixCode);
+      alert("PIX copia e cola copiado!");
+    } catch {
+      alert("Não foi possível copiar o PIX. Tente novamente.");
+    }
+  }}
+  className="mt-3 w-full rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-emerald-700 active:scale-[.98]"
+>
+  📋 Copiar PIX copia e cola
+</button>
+
+      <p className="mt-2 text-[11px] text-emerald-700">
+        Após realizar o pagamento, envie o pedido pelo WhatsApp.
+      </p>
+    </div>
+  )}
+</div>
+
+{!deliveryStatus.open && (
+  <p className="text-xs text-pink-600">
+    Delivery fechado no momento. No momento não estamos aceitando novos pedidos.
+  </p>
+)}
+
+{deliveryStatus.open && !canSend && (
+  <p className="text-xs text-pink-600">
+    Preencha nome, telefone, região e forma de pagamento para continuar.
+  </p>
+)}
+
+{submitError && (
+  <p className="text-xs text-pink-600">
+    {submitError}
+  </p>
+)}
         </div>
       </Modal>
     );
