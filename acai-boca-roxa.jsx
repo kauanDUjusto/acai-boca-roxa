@@ -914,48 +914,6 @@ function generatePixPayload(amount) {
     };
   }, [orderId]);
 
-  useEffect(() => {
-    const loadOrder = async () => {
-      try {
-        const { data, error } = await supabase
-          .from("site_orders")
-          .select("*")
-          .eq("id", orderId)
-          .single();
-
-        if (error) throw error;
-        setOrder(data);
-      } catch (err) {
-        setError("Não foi possível carregar o pedido.");
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadOrder();
-
-    // Realtime subscription for order updates
-    const channel = supabase
-      .channel(`order-tracking-${orderId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "site_orders",
-          filter: `id=eq.${orderId}`,
-        },
-        (payload) => {
-          setOrder(payload.new);
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [orderId]);
-
   const statusSteps = [
     { key: "novo", label: "Recebido", icon: "📝" },
     { key: "preparando", label: "Preparando", icon: "🍳" },
