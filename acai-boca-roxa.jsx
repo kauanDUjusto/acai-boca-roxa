@@ -270,7 +270,7 @@ function playNewOrderSound() {
     return calculateProductPrice(item, prices).total;
   }
 
-  function buildWhatsAppMessage(cart, customer, prices, subtotal, deliveryFee) {
+  function buildWhatsAppMessage(cart, customer, prices, subtotal, deliveryFee, orderId = null) {
     const lines = [];
     const isRetirada = customer.deliveryRegion === "Retirada";
 
@@ -308,6 +308,11 @@ function playNewOrderSound() {
     lines.push(`Endereço: ${isRetirada ? "Retirada no local" : (customer.address || "-")}`);
     lines.push(`Forma de pagamento: ${customer.payment || "-"}`);
     lines.push(`Observação: ${customer.note || "-"}`);
+    if (orderId) {
+      lines.push("");
+      lines.push(`📋 Código do pedido: ${orderId}`);
+      lines.push("Use este código para acompanhar o status do pedido no site.");
+    }
     return lines.join("\n");
   }
 
@@ -462,7 +467,7 @@ function playNewOrderSound() {
   function Header({ cartCount, onCartClick, onNav }) {
     const [open, setOpen] = useState(false);
     const links = [
-      ["inicio", "Início"], ["cardapio", "Cardápio"], ["monte", "Monte seu Açaí"], ["sobre", "Sobre nós"], ["contato", "Contato"],
+      ["inicio", "Início"], ["cardapio", "Cardápio"], ["monte", "Monte seu Açaí"], ["acompanhar", "Acompanhar pedido"], ["sobre", "Sobre nós"], ["contato", "Contato"],
     ];
     return (
       <header className="sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-purple-100">
@@ -480,6 +485,9 @@ function playNewOrderSound() {
             <button onClick={onCartClick} className="relative w-10 h-10 rounded-full flex items-center justify-center hover:bg-purple-50 text-purple-900">
               <ShoppingCart size={22} />
               {cartCount > 0 && <span className="absolute -top-1 -right-1 bg-pink-600 text-white text-[11px] font-bold w-5 h-5 rounded-full flex items-center justify-center">{cartCount}</span>}
+            </button>
+            <button onClick={() => onNav("acompanhar")} className="hidden sm:flex items-center gap-1.5 bg-purple-100 text-purple-800 text-sm font-semibold px-4 py-2.5 rounded-full hover:bg-purple-200 active:scale-95 transition-all">
+              <ClipboardList size={15} /> Acompanhar pedido
             </button>
             <button onClick={() => setOpen((v) => !v)} className="lg:hidden w-10 h-10 rounded-full flex items-center justify-center hover:bg-purple-50 text-purple-900">
               {open ? <X size={22} /> : <Menu size={22} />}
@@ -564,6 +572,49 @@ function playNewOrderSound() {
           {sizes.map((s) => (
             <SizeCard key={s} category={cat} size={s} prices={prices} onAdd={(size) => onRequestAdd(cat, size)} />
           ))}
+        </div>
+      </section>
+    );
+  }
+
+  /* ============================================================
+    ACOMPANHAR PEDIDO
+    ============================================================ */
+
+  function OrderTrackingSection({ onTrackOrder }) {
+    const [orderId, setOrderId] = useState("");
+
+    const handleSubmit = (e) => {
+      e.preventDefault();
+      if (orderId.trim()) {
+        onTrackOrder(orderId.trim());
+      }
+    };
+
+    return (
+      <section id="acompanhar" className="max-w-6xl mx-auto px-4 sm:px-6 py-16">
+        <h2 className="text-3xl sm:text-4xl font-black text-purple-950 text-center" style={{ fontFamily: "'Fraunces', serif" }}>Acompanhar pedido</h2>
+        <p className="text-center text-purple-500 mt-2 mb-8">Digite o código do seu pedido para acompanhar o status</p>
+
+        <div className="max-w-md mx-auto">
+          <form onSubmit={handleSubmit} className="flex gap-2">
+            <input
+              type="text"
+              value={orderId}
+              onChange={(e) => setOrderId(e.target.value)}
+              placeholder="Código do pedido (ex: ped-1234567890)"
+              className="flex-1 rounded-xl border border-purple-200 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-purple-400"
+            />
+            <button
+              type="submit"
+              className="bg-purple-800 text-white font-bold px-6 py-3 rounded-xl hover:bg-purple-900 active:scale-95 transition-all"
+            >
+              Buscar
+            </button>
+          </form>
+          <p className="mt-4 text-sm text-purple-500 text-center">
+            O código do pedido foi enviado pelo WhatsApp após a confirmação.
+          </p>
         </div>
       </section>
     );
@@ -816,7 +867,182 @@ function generatePixPayload(amount) {
 }
 
 
-  function CheckoutModal({ cart, prices, config, deliveryStatus, onClose, onSent }) {
+  function OrderTrackingModal({ orderId, onClose }) {
+  const [order, setOrder] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    const loadOrder = async () => {
+      try {
+        const { data, error } = await supabase
+          .from("site_orders")
+          .select("*")
+          .eq("id", orderId)
+          .single();
+
+        if (error) throw error;
+        setOrder(data);
+      } catch (err) {
+        setError("Não foi possível carregar o pedido.");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadOrder();
+
+    // Realtime subscription for order updates
+    const channel = supabase
+      .channel(`order-tracking-${orderId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "site_orders",
+          filter: `id=eq.${orderId}`,
+        },
+        (payload) => {
+          setOrder(payload.new);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [orderId]);
+
+  useEffect(() => {
+    const loadOrder = async () => {
+      try {
+        const { data, error } = await supabase
+          .from("site_orders")
+          .select("*")
+          .eq("id", orderId)
+          .single();
+
+        if (error) throw error;
+        setOrder(data);
+      } catch (err) {
+        setError("Não foi possível carregar o pedido.");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadOrder();
+
+    // Realtime subscription for order updates
+    const channel = supabase
+      .channel(`order-tracking-${orderId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "site_orders",
+          filter: `id=eq.${orderId}`,
+        },
+        (payload) => {
+          setOrder(payload.new);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [orderId]);
+
+  const statusSteps = [
+    { key: "novo", label: "Recebido", icon: "📝" },
+    { key: "preparando", label: "Preparando", icon: "🍳" },
+    { key: "a_caminho", label: "A caminho", icon: "🚗" },
+    { key: "concluido", label: "Concluído", icon: "✅" },
+  ];
+
+  const currentStepIndex = order ? statusSteps.findIndex(step => step.key === order.status) : 0;
+
+  if (loading) {
+    return (
+      <Modal title="Acompanhar pedido" onClose={onClose}>
+        <div className="text-center py-8">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-800 mx-auto"></div>
+          <p className="mt-4 text-purple-600">Carregando pedido...</p>
+        </div>
+      </Modal>
+    );
+  }
+
+  if (error || !order) {
+    return (
+      <Modal title="Acompanhar pedido" onClose={onClose}>
+        <div className="text-center py-8">
+          <p className="text-red-600">{error || "Pedido não encontrado."}</p>
+        </div>
+      </Modal>
+    );
+  }
+
+  return (
+    <Modal title="Acompanhar pedido" onClose={onClose}>
+      <div className="space-y-6">
+        <div className="bg-purple-50 rounded-xl p-4">
+          <p className="text-sm text-purple-600">Pedido #{order.id.slice(-8)}</p>
+          <p className="text-lg font-bold text-purple-950 mt-1">
+            Status atual: {statusSteps[currentStepIndex]?.label || order.status}
+          </p>
+        </div>
+
+        <div className="space-y-4">
+          {statusSteps.map((step, index) => {
+            const isActive = index <= currentStepIndex;
+            const isCurrent = index === currentStepIndex;
+
+            return (
+              <div
+                key={step.key}
+                className={`flex items-center gap-3 p-3 rounded-xl transition-all ${
+                  isActive ? "bg-purple-50" : "bg-gray-50 opacity-50"
+                }`}
+              >
+                <div
+                  className={`w-10 h-10 rounded-full flex items-center justify-center text-lg ${
+                    isActive ? "bg-purple-800 text-white" : "bg-gray-200 text-gray-400"
+                  }`}
+                >
+                  {step.icon}
+                </div>
+                <div className="flex-1">
+                  <p
+                    className={`font-semibold ${
+                      isActive ? "text-purple-950" : "text-gray-400"
+                    }`}
+                  >
+                    {step.label}
+                  </p>
+                  {isCurrent && (
+                    <p className="text-xs text-purple-600">Em andamento</p>
+                  )}
+                </div>
+                {isActive && <Check size={20} className="text-purple-800" />}
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="text-center text-sm text-purple-500">
+          <p>O status do pedido é atualizado automaticamente.</p>
+          <p className="mt-1">Você pode fechar esta janela e voltar aqui quando quiser.</p>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function CheckoutModal({ cart, prices, config, deliveryStatus, onClose, onSent }) {
     const [form, setForm] = useState({ name: "", phone: "", address: "", note: "", payment: "", deliveryRegion: "" });
     const [orderType, setOrderType] = useState("delivery"); // "delivery" ou "retirada"
     const [submitError, setSubmitError] = useState("");
@@ -839,8 +1065,11 @@ function generatePixPayload(amount) {
         return;
       }
 
-      const msg = buildWhatsAppMessage(cart, form, prices, subtotal, deliveryFee);
+      const msg = buildWhatsAppMessage(cart, form, prices, subtotal, deliveryFee, result.orderId);
       window.open(`https://wa.me/${config.whatsapp}?text=${encodeURIComponent(msg)}`, "_blank");
+
+      onClose();
+      onSent({ ok: true, orderId: result.orderId });
     };
 
     return (
@@ -2533,6 +2762,8 @@ export default function App() {
   const [addModal, setAddModal] = useState(null);
   const [builderPrefill, setBuilderPrefill] = useState(null);
   const [sentBanner, setSentBanner] = useState(false);
+  const [orderTrackingOpen, setOrderTrackingOpen] = useState(false);
+  const [trackingOrderId, setTrackingOrderId] = useState(null);
   const [soundEnabled, setSoundEnabled] = useState(() => localStorage.getItem("acai_boca_roxa_admin_sound_enabled") !== "false");
   const [newOrderAlert, setNewOrderAlert] = useState(false);
   const knownOrderIds = useRef(new Set());
@@ -2744,19 +2975,21 @@ useEffect(() => {
         status: order.status,
       });
 
-    if (!error) {
-      knownOrderIds.current.add(order.id);
-        setOrders((prev) => (prev.some((item) => item.id === order.id) ? prev : [...prev, order]));
-    } else {
-      console.error("ERRO AO SALVAR PEDIDO:", error);
+    if (error) {
       return { ok: false, message: "Não foi possível salvar o pedido. Tente novamente." };
     }
 
-    setCheckoutOpen(false);
+    // Limpa o carrinho e abre o modal de acompanhamento
     setCart([]);
-    setSentBanner(true);
-    setTimeout(() => setSentBanner(false), 5000);
-    return { ok: true };
+    setTrackingOrderId(order.id);
+    setOrderTrackingOpen(true);
+
+    return { ok: true, orderId: order.id };
+  };
+
+  const handleTrackOrder = (orderId) => {
+    setTrackingOrderId(orderId);
+    setOrderTrackingOpen(true);
   };
 
   if (view === "admin") {
@@ -2789,6 +3022,7 @@ useEffect(() => {
       <Hero onNav={scrollTo} />
       <MenuSection prices={prices} onRequestAdd={(category, size) => setAddModal({ category, size })} />
       <BuilderSection prices={prices} ingredients={ingredients} ingredientOrder={config.ingredient_order} fruitOrder={config.fruit_order} addToCart={addToCart} prefill={builderPrefill} clearPrefill={() => setBuilderPrefill(null)} />
+      <OrderTrackingSection onTrackOrder={handleTrackOrder} />
       <About />
       <Contact config={config} />
       <Footer config={config} onNav={scrollTo} />
@@ -2815,9 +3049,16 @@ useEffect(() => {
         <CheckoutModal cart={cart} prices={prices} config={config} deliveryStatus={deliveryStatus} onClose={() => setCheckoutOpen(false)} onSent={handleOrderSent} />
       )}
 
+      {orderTrackingOpen && trackingOrderId && (
+        <OrderTrackingModal
+          orderId={trackingOrderId}
+          onClose={() => setOrderTrackingOpen(false)}
+        />
+      )}
+
       {sentBanner && (
         <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 bg-purple-900 text-white px-5 py-3 rounded-full shadow-lg text-sm font-semibold flex items-center gap-2">
-          <Check size={16} /> Pedido enviado! Confira o WhatsApp.
+          <Check size={16} /> Pedido enviado com sucesso! Acompanhe o status do seu pedido.
         </div>
       )}
     </div>
