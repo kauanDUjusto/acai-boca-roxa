@@ -1286,7 +1286,6 @@ function Footer({ config, onNav }) {
         <div className="flex items-center gap-3">
           <a href="#" className="w-9 h-9 rounded-full bg-purple-900 flex items-center justify-center hover:bg-purple-800"><Camera size={16} /></a>
           <a href={`https://wa.me/${config.whatsapp}`} target="_blank" rel="noreferrer" className="w-9 h-9 rounded-full bg-purple-900 flex items-center justify-center hover:bg-purple-800"><MessageCircle size={16} /></a>
-          <a href="/admin" className="text-xs text-purple-400 hover:text-white underline ml-2">Painel administrativo</a>
         </div>
       </div>
     </footer>
@@ -3024,7 +3023,7 @@ export default function App() {
     return () => window.clearInterval(timer);
   }, []);
 
-  const getView = () => (window.location.pathname === "/admin" ? "admin" : "site");
+  const getView = () => (window.location.pathname === "/gestao-abr7k2" ? "admin" : "site");
   const [view, setView] = useState(getView());
   const [adminAuthed, setAdminAuthed] = useState(false);
   const [authLoading, setAuthLoading] = useState(true);
