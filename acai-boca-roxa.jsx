@@ -2727,17 +2727,47 @@ function AdminOrdersTab({ orders, setOrders, showFinance = false }) {
           <div className="flex items-center justify-between mb-2">
             <p className="text-xs text-purple-400">{o.createdAt ? new Date(o.createdAt).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" }) : "Data não informada"}</p>
             <div className="flex items-center gap-2">
-              <span className={`text-xs font-semibold px-3 py-1 rounded-full ${o.status === "novo" ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"}`}>
-                {o.status === "novo" ? "Novo" : "Concluído"}
+              <span className={`text-xs font-semibold px-3 py-1 rounded-full ${
+                o.status === "novo" ? "bg-amber-100 text-amber-700" :
+                o.status === "preparando" ? "bg-blue-100 text-blue-700" :
+                o.status === "a_caminho" ? "bg-purple-100 text-purple-700" :
+                "bg-emerald-100 text-emerald-700"
+              }`}>
+                {o.status === "novo" ? "Novo" :
+                 o.status === "preparando" ? "Preparando" :
+                 o.status === "a_caminho" ? "A caminho" :
+                 "Concluído"}
               </span>
-              <button
-                onClick={(event) => { event.stopPropagation(); toggleStatus(o.id); }}
-                aria-label={o.status === "novo" ? "Marcar pedido como concluído" : "Reabrir pedido"}
-                title={o.status === "novo" ? "Marcar como concluído" : "Reabrir pedido"}
-                className={`inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors ${o.status === "novo" ? "border-emerald-200 text-emerald-700 hover:bg-emerald-50" : "border-amber-200 text-amber-700 hover:bg-amber-50"}`}
-              >
-                {o.status === "novo" ? <><Check size={14} /> Concluir</> : <><RotateCcw size={14} /> Reabrir</>}
-              </button>
+              <div className="flex gap-1">
+                <button
+                  onClick={(event) => { event.stopPropagation(); setOrderStatus(o.id, "novo"); }}
+                  title="Marcar como novo"
+                  className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-lg border transition-colors ${o.status === "novo" ? "border-amber-700 bg-amber-50 text-amber-900" : "border-amber-200 text-amber-700 hover:bg-amber-50"}`}
+                >
+                  📝
+                </button>
+                <button
+                  onClick={(event) => { event.stopPropagation(); setOrderStatus(o.id, "preparando"); }}
+                  title="Marcar como preparando"
+                  className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-lg border transition-colors ${o.status === "preparando" ? "border-blue-700 bg-blue-50 text-blue-900" : "border-blue-200 text-blue-700 hover:bg-blue-50"}`}
+                >
+                  🍳
+                </button>
+                <button
+                  onClick={(event) => { event.stopPropagation(); setOrderStatus(o.id, "a_caminho"); }}
+                  title="Marcar como a caminho"
+                  className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-lg border transition-colors ${o.status === "a_caminho" ? "border-purple-700 bg-purple-50 text-purple-900" : "border-purple-200 text-purple-700 hover:bg-purple-50"}`}
+                >
+                  🚗
+                </button>
+                <button
+                  onClick={(event) => { event.stopPropagation(); setOrderStatus(o.id, "concluido"); }}
+                  title="Marcar como concluído"
+                  className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-lg border transition-colors ${o.status === "concluido" ? "border-emerald-700 bg-emerald-50 text-emerald-900" : "border-emerald-200 text-emerald-700 hover:bg-emerald-50"}`}
+                >
+                  ✅
+                </button>
+              </div>
             </div>
           </div>
           <p className="font-semibold text-purple-950">{o.customer.name} · {o.customer.phone}</p>
