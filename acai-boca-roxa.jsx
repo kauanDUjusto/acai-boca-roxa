@@ -2267,6 +2267,11 @@ function CounterOrderModal({
 function AdminOrdersTab({ orders, setOrders, showFinance = false }) {
   const paymentOptions = ["Pix", "Dinheiro", "Cartão de crédito", "Cartão de débito", "Não informado"];
   const [selectedDate, setSelectedDate] = useState(() => saoPauloDateKey(new Date()));
+  const [showAllOrders, setShowAllOrders] = useState(false);
+  const [selectedMonth, setSelectedMonth] = useState(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  });
   const [financeTab, setFinanceTab] = useState("resumo");
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [counter, setCounter] = useState(EMPTY_COUNTER_REGISTER);
@@ -2277,6 +2282,54 @@ function AdminOrdersTab({ orders, setOrders, showFinance = false }) {
   const counterSaveVersion = useRef(0);
   const lastSavedCounter = useRef(null);
   const sorted = [...orders].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+
+  // Filtro de pedidos por data
+  const filteredOrders = showAllOrders
+    ? sorted
+    : sorted.filter((order) => saoPauloDateKey(order.createdAt) === selectedDate);
+
+  // Resumo do período selecionado
+  const periodSummary = filteredOrders.reduce((result, order) => {
+    const payment = paymentOptions.includes(order.paymentMethod) ? order.paymentMethod : "Não informado";
+    result.total += Number(order.total) || 0;
+    result.payments[payment].count += 1;
+    result.payments[payment].total += Number(order.total) || 0;
+    result.totalOrders += 1;
+    if (order.status === "concluido") result.completedOrders += 1;
+    if (order.status === "novo") result.newOrders += 1;
+    return result;
+  }, {
+    total: 0,
+    totalOrders: 0,
+    completedOrders: 0,
+    newOrders: 0,
+    payments: Object.fromEntries(paymentOptions.map((payment) => [payment, { count: 0, total: 0 }])),
+  });
+
+  const averageTicket = periodSummary.totalOrders > 0 ? periodSummary.total / periodSummary.totalOrders : 0;
+
+  // Resumo mensal
+  const monthlyOrders = sorted.filter((order) => {
+    const orderDate = saoPauloDateKey(order.createdAt);
+    return orderDate.startsWith(selectedMonth);
+  });
+
+  const monthlySummary = monthlyOrders.reduce((result, order) => {
+    result.total += Number(order.total) || 0;
+    result.totalOrders += 1;
+    if (order.status === "concluido") result.completedOrders += 1;
+    if (order.status === "novo") result.newOrders += 1;
+    return result;
+  }, {
+    total: 0,
+    totalOrders: 0,
+    completedOrders: 0,
+    newOrders: 0,
+  });
+
+  const monthlyAverageTicket = monthlySummary.totalOrders > 0 ? monthlySummary.total / monthlySummary.totalOrders : 0;
+
+  // Filtro diário (mantido para compatibilidade com financeiro)
   const dailyOrders = sorted.filter((order) => saoPauloDateKey(order.createdAt) === selectedDate);
   const summary = dailyOrders.reduce((result, order) => {
     const payment = paymentOptions.includes(order.paymentMethod) ? order.paymentMethod : "Não informado";
@@ -2302,7 +2355,7 @@ function AdminOrdersTab({ orders, setOrders, showFinance = false }) {
   const counterTotal = counterRows.reduce((total, [, , totalKey]) => total + (Number(counter[totalKey]) || 0), 0);
   const generalSales = dailyOrders.length + counterSales;
   const generalTotal = summary.total + counterTotal;
-  const ordersToDisplay = showFinance ? (financeTab === "resumo" ? dailyOrders : []) : sorted;
+  const ordersToDisplay = showFinance ? (financeTab === "resumo" ? dailyOrders : []) : filteredOrders;
 
   useEffect(() => {
     if (!showFinance) return undefined;
@@ -2446,7 +2499,112 @@ function AdminOrdersTab({ orders, setOrders, showFinance = false }) {
     );
   };
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
+      {!showFinance && (
+        <section className="rounded-2xl border border-purple-100 bg-white p-4 space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wide text-purple-500">Filtro de pedidos</p>
+              <div className="flex gap-2 mt-2">
+                <button
+                  onClick={() => {
+                    setShowAllOrders(false);
+                    setSelectedDate(saoPauloDateKey(new Date()));
+                  }}
+                  className={`rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${!showAllOrders && selectedDate === saoPauloDateKey(new Date()) ? "border-purple-800 bg-purple-800 text-white" : "border-purple-200 text-purple-700 hover:bg-purple-50"}`}
+                >
+                  Hoje
+                </button>
+                <button
+                  onClick={() => {
+                    setShowAllOrders(false);
+                    setSelectedDate(saoPauloRelativeDateKey(-1));
+                  }}
+                  className={`rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${!showAllOrders && selectedDate === saoPauloRelativeDateKey(-1) ? "border-purple-800 bg-purple-800 text-white" : "border-purple-200 text-purple-700 hover:bg-purple-50"}`}
+                >
+                  Ontem
+                </button>
+                <input
+                  type="date"
+                  value={selectedDate}
+                  onChange={(event) => {
+                    setShowAllOrders(false);
+                    setSelectedDate(event.target.value);
+                  }}
+                  className="rounded-lg border border-purple-200 px-3 py-2 text-xs text-purple-900"
+                />
+                <button
+                  onClick={() => setShowAllOrders(true)}
+                  className={`rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${showAllOrders ? "border-purple-800 bg-purple-800 text-white" : "border-purple-200 text-purple-700 hover:bg-purple-50"}`}
+                >
+                  Todos
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 rounded-xl bg-purple-50 p-4">
+            <div className="text-center">
+              <p className="text-xs text-purple-600">Pedidos</p>
+              <p className="text-lg font-bold text-purple-950">{periodSummary.totalOrders}</p>
+            </div>
+            <div className="text-center">
+              <p className="text-xs text-purple-600">Faturamento</p>
+              <p className="text-lg font-bold text-purple-950">{formatBRL(periodSummary.total)}</p>
+            </div>
+            <div className="text-center">
+              <p className="text-xs text-purple-600">Ticket médio</p>
+              <p className="text-lg font-bold text-purple-950">{formatBRL(averageTicket)}</p>
+            </div>
+            <div className="text-center">
+              <p className="text-xs text-purple-600">Status</p>
+              <p className="text-sm font-bold text-purple-950">
+                {periodSummary.completedOrders} concluídos · {periodSummary.newOrders} novos
+              </p>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {!showFinance && (
+        <section className="rounded-2xl border border-purple-100 bg-white p-4 space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wide text-purple-500">Resumo do mês</p>
+              <div className="flex gap-2 mt-2 items-center">
+                <input
+                  type="month"
+                  value={selectedMonth}
+                  onChange={(event) => setSelectedMonth(event.target.value)}
+                  className="rounded-lg border border-purple-200 px-3 py-2 text-xs text-purple-900"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 rounded-xl bg-emerald-50 p-4">
+            <div className="text-center">
+              <p className="text-xs text-emerald-600">Pedidos no mês</p>
+              <p className="text-lg font-bold text-emerald-950">{monthlySummary.totalOrders}</p>
+            </div>
+            <div className="text-center">
+              <p className="text-xs text-emerald-600">Faturamento</p>
+              <p className="text-lg font-bold text-emerald-950">{formatBRL(monthlySummary.total)}</p>
+            </div>
+            <div className="text-center">
+              <p className="text-xs text-emerald-600">Ticket médio</p>
+              <p className="text-lg font-bold text-emerald-950">{formatBRL(monthlyAverageTicket)}</p>
+            </div>
+            <div className="text-center">
+              <p className="text-xs text-emerald-600">Status</p>
+              <p className="text-sm font-bold text-emerald-950">
+                {monthlySummary.completedOrders} concluídos · {monthlySummary.newOrders} novos
+              </p>
+            </div>
+          </div>
+        </section>
+      )}
+
       {showFinance && (
         <div className="flex gap-2 overflow-x-auto rounded-2xl border border-purple-100 bg-white p-2">
           {[["resumo", "Resumo de vendas"], ["balcao", "Vendas do balcão"], ["fechamento", "Fechamento de caixa"], ["historico", "Histórico de fechamentos"]].map(([id, label]) => (
@@ -2552,7 +2710,11 @@ function AdminOrdersTab({ orders, setOrders, showFinance = false }) {
         </div>
       </section>
       )}
-      {((showFinance && financeTab === "resumo") || !showFinance) && ordersToDisplay.length === 0 && <p className="text-center text-purple-400 py-10">Nenhum pedido encontrado nesta data.</p>}
+      {((showFinance && financeTab === "resumo") || !showFinance) && ordersToDisplay.length === 0 && (
+        <p className="text-center text-purple-400 py-10">
+          {showAllOrders ? "Nenhum pedido encontrado." : `Nenhum pedido encontrado em ${selectedDate}.`}
+        </p>
+      )}
       {ordersToDisplay.map((o) => (
         <div
           key={o.id}
