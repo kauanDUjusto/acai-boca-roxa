@@ -1411,6 +1411,265 @@ function AdminInfoTab({ config, setConfig }) {
     </div>
   );
 }
+function printOrder(order) {
+  if (!order) return;
+
+  const escapeHtml = (value) =>
+    String(value ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+
+  const dateText = order.createdAt
+    ? new Date(order.createdAt).toLocaleString("pt-BR", {
+        timeZone: "America/Sao_Paulo",
+      })
+    : "Não informada";
+
+  const itemsHtml = (order.items || [])
+    .map((item) => {
+      const itemName = `${item.qty}x ${itemLabel(item.category, item.size)}`;
+
+      return `
+        <div class="item">
+          <div class="bold">${escapeHtml(itemName)}</div>
+
+          ${
+            item.ingredients?.length
+              ? `<div>Ingredientes: ${escapeHtml(
+                  item.ingredients.map((ingredient) => ingredient.name).join(", ")
+                )}</div>`
+              : ""
+          }
+
+          ${
+            item.fruits?.length
+              ? `<div>Frutas: ${escapeHtml(
+                  item.fruits.map((fruit) => fruit.name).join(", ")
+                )}</div>`
+              : ""
+          }
+
+          ${
+            item.topping
+              ? `<div>Cobertura: ${escapeHtml(item.topping.name)}</div>`
+              : ""
+          }
+
+          ${
+            item.calculation?.ingredientExcessPrice > 0
+              ? `<div>Ingredientes extras: ${formatBRL(
+                  item.calculation.ingredientExcessPrice
+                )}</div>`
+              : ""
+          }
+
+          ${
+            item.calculation?.fruitExcessPrice > 0
+              ? `<div>Frutas extras: ${formatBRL(
+                  item.calculation.fruitExcessPrice
+                )}</div>`
+              : ""
+          }
+
+          <div>Preço: ${formatBRL(
+            (item.finalPrice ?? item.calculation?.total ?? 0) * item.qty
+          )}</div>
+        </div>
+      `;
+    })
+    .join("");
+
+  const printWindow = window.open("", "_blank", "width=400,height=800");
+
+  if (!printWindow) {
+    alert("O navegador bloqueou a janela de impressão. Permita pop-ups para este site.");
+    return;
+  }
+
+  printWindow.document.open();
+
+  printWindow.document.write(`
+    <!DOCTYPE html>
+    <html lang="pt-BR">
+      <head>
+        <meta charset="UTF-8">
+        <title>Pedido ${escapeHtml(order.id)}</title>
+
+        <style>
+          @page {
+            size: 80mm auto;
+            margin: 0;
+          }
+
+          * {
+            box-sizing: border-box;
+          }
+
+          html,
+          body {
+            margin: 0;
+            padding: 0;
+            width: 80mm;
+            background: #fff;
+          }
+
+          body {
+            font-family: "Courier New", monospace;
+            font-size: 10pt;
+            line-height: 1.3;
+            color: #000;
+          }
+
+          .receipt {
+            width: 80mm;
+            padding: 3mm 4mm;
+          }
+
+          .center {
+            text-align: center;
+          }
+
+          .bold {
+            font-weight: bold;
+          }
+
+          .title {
+            font-size: 15pt;
+            font-weight: bold;
+            margin-bottom: 3mm;
+          }
+
+          .section {
+            border-top: 1px dashed #000;
+            margin-top: 3mm;
+            padding-top: 3mm;
+          }
+
+          .item {
+            margin-bottom: 3mm;
+            padding-bottom: 2mm;
+            border-bottom: 1px dashed #999;
+          }
+
+          .row {
+            display: flex;
+            justify-content: space-between;
+            gap: 4mm;
+          }
+
+          .total {
+            font-size: 13pt;
+            font-weight: bold;
+            margin-top: 2mm;
+          }
+
+          .small {
+            font-size: 8.5pt;
+          }
+        </style>
+      </head>
+
+      <body>
+        <div class="receipt">
+
+          <div class="center title">
+            Açaí Boca Roxa
+          </div>
+
+          <div>
+            <div><strong>Pedido:</strong> ${escapeHtml(order.id)}</div>
+            <div><strong>Data:</strong> ${escapeHtml(dateText)}</div>
+          </div>
+
+          <div class="section">
+            <div><strong>Cliente:</strong> ${escapeHtml(
+              order.customer?.name || "Não informado"
+            )}</div>
+
+            <div><strong>Telefone:</strong> ${escapeHtml(
+              order.customer?.phone || "Não informado"
+            )}</div>
+
+            ${
+              order.customer?.address
+                ? `<div><strong>Endereço:</strong> ${escapeHtml(
+                    order.customer.address
+                  )}</div>`
+                : ""
+            }
+
+            ${
+              order.deliveryRegion
+                ? `<div><strong>Região:</strong> ${escapeHtml(
+                    order.deliveryRegion
+                  )}</div>`
+                : ""
+            }
+
+            ${
+              order.deliveryFee !== undefined
+                ? `<div><strong>Taxa entrega:</strong> ${formatBRL(
+                    order.deliveryFee
+                  )}</div>`
+                : ""
+            }
+
+            <div><strong>Pagamento:</strong> ${escapeHtml(
+              order.paymentMethod || "Não informado"
+            )}</div>
+          </div>
+
+          <div class="section">
+            <div class="bold">PRODUTOS</div>
+            <br>
+            ${itemsHtml}
+          </div>
+
+          <div class="section">
+            <div class="row">
+              <strong>Subtotal</strong>
+              <span>${formatBRL(order.subtotal ?? 0)}</span>
+            </div>
+
+            <div class="row">
+              <strong>Taxa entrega</strong>
+              <span>${formatBRL(order.deliveryFee ?? 0)}</span>
+            </div>
+
+            <div class="row total">
+              <strong>TOTAL</strong>
+              <strong>${formatBRL(order.total ?? 0)}</strong>
+            </div>
+          </div>
+
+          ${
+            order.customer?.note
+              ? `
+                <div class="section small">
+                  <strong>Observação:</strong><br>
+                  ${escapeHtml(order.customer.note)}
+                </div>
+              `
+              : ""
+          }
+
+        </div>
+
+        <script>
+          window.onload = function () {
+            window.focus();
+            window.print();
+          };
+        </script>
+      </body>
+    </html>
+  `);
+
+  printWindow.document.close();
+}
 
 function AdminOrdersTab({ orders, setOrders, showFinance = false }) {
   const paymentOptions = ["Pix", "Dinheiro", "Cartão de crédito", "Cartão de débito", "Não informado"];
@@ -1752,7 +2011,7 @@ function AdminOrdersTab({ orders, setOrders, showFinance = false }) {
           onClose={() => setSelectedOrder(null)}
           footer={
             <div className="flex gap-2 no-print">
-              <button onClick={() => window.print()} className="flex-1 rounded-xl bg-purple-800 px-4 py-3 font-bold text-white hover:bg-purple-900">🖨️ Imprimir pedido</button>
+              <button onClick={() => printOrder(selectedOrder)} className="flex-1 rounded-xl bg-purple-800 px-4 py-3 font-bold text-white hover:bg-purple-900">🖨️ Imprimir pedido</button>
               <button onClick={() => setSelectedOrder(null)} className="rounded-xl border border-purple-200 px-4 py-3 font-semibold text-purple-800 hover:bg-purple-50">Fechar</button>
             </div>
           }
