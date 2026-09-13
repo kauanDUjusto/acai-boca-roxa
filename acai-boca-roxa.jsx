@@ -272,7 +272,11 @@ function playNewOrderSound() {
 
   function buildWhatsAppMessage(cart, customer, prices, subtotal, deliveryFee) {
     const lines = [];
+    const isRetirada = customer.deliveryRegion === "Retirada";
+
     lines.push("Olá! Gostaria de fazer um pedido na Açaí Boca Roxa.");
+    lines.push("");
+    lines.push(isRetirada ? "🥡 Pedido para retirada:" : "🚗 Pedido para entrega:");
     lines.push("");
     lines.push("Pedido:");
     cart.forEach((item) => {
@@ -293,11 +297,15 @@ function playNewOrderSound() {
     const total = subtotal + deliveryFee;
     lines.push("");
     lines.push(`Subtotal dos produtos: ${formatBRL(subtotal)}`);
-    lines.push(`Taxa de entrega (${customer.deliveryRegion}): ${formatBRL(deliveryFee)}`);
+    if (isRetirada) {
+      lines.push(`Taxa de entrega: Grátis (Retirada)`);
+    } else {
+      lines.push(`Taxa de entrega (${customer.deliveryRegion}): ${formatBRL(deliveryFee)}`);
+    }
     lines.push(`Total: ${formatBRL(total)}`);
     lines.push("");
     lines.push(`Nome: ${customer.name || "-"}`);
-    lines.push(`Endereço: ${customer.address || "-"}`);
+    lines.push(`Endereço: ${isRetirada ? "Retirada no local" : (customer.address || "-")}`);
     lines.push(`Forma de pagamento: ${customer.payment || "-"}`);
     lines.push(`Observação: ${customer.note || "-"}`);
     return lines.join("\n");
@@ -806,21 +814,22 @@ function generatePixPayload(amount) {
 
   function CheckoutModal({ cart, prices, config, deliveryStatus, onClose, onSent }) {
     const [form, setForm] = useState({ name: "", phone: "", address: "", note: "", payment: "", deliveryRegion: "" });
+    const [orderType, setOrderType] = useState("delivery"); // "delivery" ou "retirada"
     const [submitError, setSubmitError] = useState("");
     const subtotal = cart.reduce((s, i) => s + unitPrice(i, prices) * i.qty, 0);
-    const deliveryFee = DELIVERY_FEES[form.deliveryRegion];
+    const deliveryFee = orderType === "retirada" ? 0 : DELIVERY_FEES[form.deliveryRegion];
     const total = subtotal + (deliveryFee ?? 0);
     const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
-    const canSend = form.name.trim() && form.phone.trim() && form.address.trim() && form.payment && deliveryFee !== undefined && deliveryStatus.open;
+    const canSend = form.name.trim() && form.phone.trim() && form.payment && (orderType === "retirada" || (form.address.trim() && deliveryFee !== undefined)) && deliveryStatus.open;
 
     const handleSend = async () => {
       setSubmitError("");
-      if (!deliveryStatus.open) {
+      if (orderType === "delivery" && !deliveryStatus.open) {
         setSubmitError("Delivery fechado no momento. No momento não estamos aceitando novos pedidos.");
         return;
       }
 
-      const result = await onSent(form, subtotal, deliveryFee);
+      const result = await onSent(form, subtotal, deliveryFee, orderType);
       if (!result?.ok) {
         setSubmitError(result?.message || "Não foi possível enviar o pedido.");
         return;
@@ -843,21 +852,53 @@ function generatePixPayload(amount) {
         <div className="space-y-3.5">
           <div className="rounded-xl bg-purple-50 px-4 py-3 space-y-1 text-purple-950">
             <div className="flex justify-between text-sm"><span>Subtotal dos produtos</span><span>{formatBRL(subtotal)}</span></div>
-            <div className="flex justify-between text-sm"><span>Taxa de entrega</span><span>{deliveryFee === undefined ? "Selecione a região" : formatBRL(deliveryFee)}</span></div>
+            <div className="flex justify-between text-sm"><span>Taxa de entrega</span><span>{orderType === "retirada" ? "Grátis" : (deliveryFee === undefined ? "Selecione a região" : formatBRL(deliveryFee))}</span></div>
             <div className="flex justify-between border-t border-purple-200 pt-1 font-bold"><span>Total final</span><span>{formatBRL(total)}</span></div>
           </div>
+
+          <div>
+            <label className="text-sm font-medium text-purple-800 mb-2 block">Tipo de pedido</label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => setOrderType("delivery")}
+                className={`rounded-xl border px-4 py-3 text-sm font-semibold transition-all ${
+                  orderType === "delivery"
+                    ? "border-purple-700 bg-purple-50 text-purple-950"
+                    : "border-purple-200 bg-white text-purple-700 hover:border-purple-300"
+                }`}
+              >
+                🚗 Entrega
+              </button>
+              <button
+                onClick={() => setOrderType("retirada")}
+                className={`rounded-xl border px-4 py-3 text-sm font-semibold transition-all ${
+                  orderType === "retirada"
+                    ? "border-purple-700 bg-purple-50 text-purple-950"
+                    : "border-purple-200 bg-white text-purple-700 hover:border-purple-300"
+                }`}
+              >
+                🥡 Retirada
+              </button>
+            </div>
+          </div>
+
           <div><label className="text-sm font-medium text-purple-800">Nome</label>
             <input value={form.name} onChange={set("name")} className="mt-1 w-full rounded-xl border border-purple-200 px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-purple-400" placeholder="Seu nome" /></div>
           <div><label className="text-sm font-medium text-purple-800">Telefone</label>
             <input value={form.phone} onChange={set("phone")} className="mt-1 w-full rounded-xl border border-purple-200 px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-purple-400" placeholder="(00) 00000-0000" /></div>
-          <div><label className="text-sm font-medium text-purple-800">Endereço</label>
-            <input value={form.address} onChange={set("address")} className="mt-1 w-full rounded-xl border border-purple-200 px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-purple-400" placeholder="Rua, número, bairro" /></div>
-          <div><label className="text-sm font-medium text-purple-800">Região de entrega</label>
-            <select value={form.deliveryRegion} onChange={set("deliveryRegion")} className="mt-1 w-full rounded-xl border border-purple-200 px-3.5 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-purple-400">
-              <option value="">Selecione sua região</option>
-              {Object.keys(DELIVERY_FEES).map((region) => <option key={region} value={region}>{region} - {formatBRL(DELIVERY_FEES[region])}</option>)}
-            </select>
-          </div>
+
+          {orderType === "delivery" && (
+            <>
+              <div><label className="text-sm font-medium text-purple-800">Endereço</label>
+                <input value={form.address} onChange={set("address")} className="mt-1 w-full rounded-xl border border-purple-200 px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-purple-400" placeholder="Rua, número, bairro" /></div>
+              <div><label className="text-sm font-medium text-purple-800">Região de entrega</label>
+                <select value={form.deliveryRegion} onChange={set("deliveryRegion")} className="mt-1 w-full rounded-xl border border-purple-200 px-3.5 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-purple-400">
+                  <option value="">Selecione sua região</option>
+                  {Object.keys(DELIVERY_FEES).map((region) => <option key={region} value={region}>{region} - {formatBRL(DELIVERY_FEES[region])}</option>)}
+                </select>
+              </div>
+            </>
+          )}
           <div><label className="text-sm font-medium text-purple-800">Observação</label>
             <textarea value={form.note} onChange={set("note")} rows={2} className="mt-1 w-full rounded-xl border border-purple-200 px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-purple-400" placeholder="Ex: sem açúcar, tocar interfone..." /></div>
 <div>
@@ -2636,7 +2677,7 @@ useEffect(() => {
   };
   const cartCount = cart.reduce((s, i) => s + i.qty, 0);
 
-  const handleOrderSent = async (customer, subtotal, deliveryFee) => {
+  const handleOrderSent = async (customer, subtotal, deliveryFee, orderType = "delivery") => {
     if (!customer.payment) {
       return { ok: false, message: "Selecione uma forma de pagamento para continuar." };
     }
@@ -2652,7 +2693,7 @@ useEffect(() => {
     const latestConfig = { ...DEFAULT_CONFIG, ...latestConfigRow.data };
     const latestDeliveryStatus = getDeliveryStatus(latestConfig);
 
-    if (!latestDeliveryStatus.open) {
+    if (orderType === "delivery" && !latestDeliveryStatus.open) {
       return {
         ok: false,
         message: latestDeliveryStatus.reason === "horario"
@@ -2661,17 +2702,24 @@ useEffect(() => {
       };
     }
 
+    const deliveryRegion = orderType === "retirada" ? "Retirada" : customer.deliveryRegion;
+    const finalDeliveryFee = orderType === "retirada" ? 0 : deliveryFee;
+
     const order = {
       id: `ped-${Date.now()}`,
       createdAt: new Date().toISOString(),
-      customer,
+      customer: {
+        ...customer,
+        address: orderType === "retirada" ? "Retirada no local" : customer.address,
+        note: orderType === "retirada" ? `Pedido retirada - ${customer.note || ""}` : customer.note,
+      },
       items: cart,
       subtotal,
-      deliveryRegion: customer.deliveryRegion,
-      deliveryFee,
+      deliveryRegion,
+      deliveryFee: finalDeliveryFee,
       paymentMethod: customer.payment,
-      total: subtotal + deliveryFee,
-      orderSource: "delivery",
+      total: subtotal + finalDeliveryFee,
+      orderSource: orderType === "retirada" ? "retirada" : "delivery",
       status: "novo",
     };
 
