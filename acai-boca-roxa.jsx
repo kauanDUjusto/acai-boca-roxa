@@ -505,7 +505,7 @@ function playNewOrderSound() {
       <header className="sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-purple-100">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
           <Logo size={36} />
-          <nav className="hidden lg:flex items-center gap-7">
+          <nav className="hidden lg:flex items-center gap-8">
             {links.map(([id, label]) => (
               <button key={id} onClick={() => onNav(id)} className="text-sm font-medium text-purple-800 hover:text-purple-950 transition-colors">{label}</button>
             ))}
@@ -2475,7 +2475,12 @@ function AdminOrdersTab({ orders, setOrders, showFinance = false }) {
   const setOrderStatus = async (id, newStatus) => {
     const order = orders.find((o) => o.id === id);
 
-    if (!order) return;
+    if (!order) {
+      console.error("Pedido não encontrado:", id);
+      return;
+    }
+
+    console.log(`Alterando status do pedido ${id} de "${order.status}" para "${newStatus}"`);
 
     const updateData = {
       status: newStatus,
@@ -2485,7 +2490,10 @@ function AdminOrdersTab({ orders, setOrders, showFinance = false }) {
     // Adiciona horário de saída quando pedido sai para entrega
     if (newStatus === "a_caminho" && order.status !== "a_caminho") {
       updateData.delivery_started_at = new Date().toISOString();
+      console.log("Registrando horário de saída:", updateData.delivery_started_at);
     }
+
+    console.log("Dados para atualização:", updateData);
 
     const { error } = await supabase
       .from("site_orders")
@@ -2493,9 +2501,12 @@ function AdminOrdersTab({ orders, setOrders, showFinance = false }) {
       .eq("id", id);
 
     if (error) {
-      console.error("ERRO AO ATUALIZAR PEDIDO:", error);
+      console.error("ERRO AO ATUALIZAR PEDIDO NO SUPABASE:", error);
+      alert(`Erro ao atualizar pedido: ${error.message || "Erro desconhecido"}`);
       return;
     }
+
+    console.log("Status atualizado com sucesso no Supabase");
 
     setOrders((prev) =>
       prev.map((o) =>
@@ -2504,6 +2515,8 @@ function AdminOrdersTab({ orders, setOrders, showFinance = false }) {
           : o
       )
     );
+
+    console.log("Estado local atualizado");
   };
 
   const toggleStatus = async (id) => {
