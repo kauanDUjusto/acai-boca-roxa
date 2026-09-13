@@ -181,6 +181,7 @@ function playNewOrderSound() {
       deliveryRegion: order.delivery_region,
       deliveryFee: order.delivery_fee,
       paymentMethod: order.payment_method || "",
+      orderSource: order.order_source || "delivery",
     };
   }
 
@@ -1671,6 +1672,293 @@ function printOrder(order) {
   printWindow.document.close();
 }
 
+
+function CounterOrderModal({
+  prices,
+  ingredients,
+  ingredientOrder,
+  fruitOrder,
+  onClose,
+}) {
+  const [items, setItems] = useState([]);
+  const [addModal, setAddModal] = useState(null);
+  const [paymentMethod, setPaymentMethod] = useState("");
+
+  const total = items.reduce(
+    (sum, item) => sum + (Number(item.finalPrice) || 0) * (Number(item.qty) || 1),
+    0
+  );
+
+  const addItem = (selection) => {
+    const item = {
+      id: `${Date.now()}-${Math.random()}`,
+      category: addModal.category,
+      size: addModal.size,
+      ...selection,
+      qty: 1,
+      finalPrice: selection.calculation.total,
+    };
+
+    setItems((current) => [...current, item]);
+    setAddModal(null);
+  };
+
+  const removeItem = (id) => {
+    setItems((current) => current.filter((item) => item.id !== id));
+  };
+
+  const changeQty = (id, delta) => {
+    setItems((current) =>
+      current
+        .map((item) =>
+          item.id === id
+            ? { ...item, qty: Math.max(1, (Number(item.qty) || 1) + delta) }
+            : item
+        )
+        .filter((item) => item.qty > 0)
+    );
+  };
+
+  const finalizeOrder = async () => {
+    if (items.length === 0 || !paymentMethod) return;
+
+    const order = {
+      id: `balcão-${Date.now()}`,
+      createdAt: new Date().toISOString(),
+      customer: {
+        name: "Cliente do balcão",
+        address: "Balcão",
+        payment: paymentMethod,
+        note: "Pedido balcão",
+      },
+      items: items,
+      subtotal: total,
+      deliveryRegion: "Balcão",
+      deliveryFee: 0,
+      paymentMethod: paymentMethod,
+      total: total,
+      orderSource: "balcão",
+      status: "novo",
+    };
+
+    const { error } = await supabase
+      .from("site_orders")
+      .insert({
+        id: order.id,
+        created_at: order.createdAt,
+        customer: order.customer,
+        items: order.items,
+        subtotal: order.subtotal,
+        delivery_region: order.deliveryRegion,
+        delivery_fee: order.deliveryFee,
+        payment_method: order.paymentMethod,
+        order_source: order.orderSource,
+        total: order.total,
+        status: order.status,
+      });
+
+    if (error) {
+      console.error("Erro ao salvar pedido do balcão:", error);
+      alert("Erro ao salvar pedido. Tente novamente.");
+      return;
+    }
+
+    setItems([]);
+    setPaymentMethod("");
+    onClose();
+  };
+
+  const productOptions = [
+    ["acai", "Açaí"],
+    ["cupuacu", "Cupuaçu"],
+    ["casadinho", "Casadinho"],
+    ["tigela", "Tigela"],
+    ["barca", "Barca"],
+  ];
+
+  
+  return (
+    <>
+      <Modal
+        title="🛒 Novo pedido balcão"
+        onClose={onClose}
+        footer={
+          <div className="space-y-3">
+            <div className="flex items-center justify-between text-lg font-black text-purple-950">
+              <span>Total</span>
+              <span>{formatBRL(total)}</span>
+            </div>
+
+            <select
+              value={paymentMethod}
+              onChange={(event) => setPaymentMethod(event.target.value)}
+              className="w-full rounded-xl border border-purple-200 bg-white px-4 py-3 text-sm font-semibold text-purple-950 outline-none focus:border-purple-500"
+            >
+              <option value="">Forma de pagamento</option>
+              <option value="Pix">Pix</option>
+              <option value="Dinheiro">Dinheiro</option>
+              <option value="Cartão de crédito">Cartão de crédito</option>
+              <option value="Cartão de débito">Cartão de débito</option>
+            </select>
+
+            <button
+              onClick={finalizeOrder}
+              disabled={items.length === 0 || !paymentMethod}
+              className="w-full rounded-xl bg-purple-800 py-3 font-bold text-white hover:bg-purple-900 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Finalizar comanda
+            </button>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          <div>
+            <p className="text-sm font-bold text-purple-950">
+              Adicionar produto
+            </p>
+
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              {productOptions.map(([category, label]) => (
+                <div
+                  key={category}
+                  className="rounded-xl border border-purple-200 bg-purple-50 p-2"
+                >
+                  <p className="px-1 pb-2 text-sm font-black text-purple-900">
+                    {label}
+                  </p>
+
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {SIZE_OPTIONS[category]?.map((size) => (
+                      <button
+                        key={String(size)}
+                        onClick={() =>
+                          setAddModal({
+                            category,
+                            size,
+                          })
+                        }
+                        className="rounded-lg border border-purple-200 bg-white px-2 py-2 text-xs font-bold text-purple-800 hover:bg-purple-100"
+                      >
+                        {category === "barca"
+                          ? size === "grande"
+                            ? "Grande"
+                            : "Pequena"
+                          : `${size} ml`}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {items.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-purple-200 px-4 py-8 text-center">
+              <ShoppingCart className="mx-auto text-purple-300" size={30} />
+              <p className="mt-2 text-sm font-semibold text-purple-500">
+                Nenhum produto na comanda
+              </p>
+              <p className="text-xs text-purple-400">
+                Escolha um produto acima para começar.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {items.map((item) => (
+                <div
+                  key={item.id}
+                  className="rounded-xl border border-purple-100 bg-white p-3"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="font-bold text-purple-950">
+                        {itemLabel(item.category, item.size)}
+                      </p>
+
+                      {item.ingredients?.length > 0 && (
+                        <p className="mt-1 text-xs text-purple-500">
+                          Ingredientes:{" "}
+                          {item.ingredients
+                            .map((ingredient) => ingredient.name)
+                            .join(", ")}
+                        </p>
+                      )}
+
+                      {item.fruits?.length > 0 && (
+                        <p className="text-xs text-purple-500">
+                          Frutas:{" "}
+                          {item.fruits.map((fruit) => fruit.name).join(", ")}
+                        </p>
+                      )}
+
+                      {item.topping && (
+                        <p className="text-xs text-purple-500">
+                          Cobertura: {item.topping.name}
+                        </p>
+                      )}
+                    </div>
+
+                    <button
+                      onClick={() => removeItem(item.id)}
+                      className="rounded-lg p-1.5 text-red-500 hover:bg-red-50"
+                      title="Remover produto"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+
+                  <div className="mt-3 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => changeQty(item.id, -1)}
+                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-purple-200 text-purple-700"
+                      >
+                        <Minus size={14} />
+                      </button>
+
+                      <span className="w-6 text-center text-sm font-bold">
+                        {item.qty}
+                      </span>
+
+                      <button
+                        onClick={() => changeQty(item.id, 1)}
+                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-purple-200 text-purple-700"
+                      >
+                        <Plus size={14} />
+                      </button>
+                    </div>
+
+                    <span className="font-bold text-purple-950">
+                      {formatBRL(
+                        (Number(item.finalPrice) || 0) *
+                          (Number(item.qty) || 1)
+                      )}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </Modal>
+
+      {addModal && (
+        <AddProductModal
+          category={addModal.category}
+          size={addModal.size}
+          prices={prices}
+          ingredients={ingredients}
+          ingredientOrder={ingredientOrder}
+          fruitOrder={fruitOrder}
+          onClose={() => setAddModal(null)}
+          onConfirm={addItem}
+        />
+      )}
+    </>
+  );
+}
+
+
 function AdminOrdersTab({ orders, setOrders, showFinance = false }) {
   const paymentOptions = ["Pix", "Dinheiro", "Cartão de crédito", "Cartão de débito", "Não informado"];
   const [selectedDate, setSelectedDate] = useState(() => saoPauloDateKey(new Date()));
@@ -2058,6 +2346,7 @@ function AdminOrdersTab({ orders, setOrders, showFinance = false }) {
 
 function AdminPanel({ config, setConfig, prices, setPrices, ingredients, setIngredients, orders, setOrders, soundEnabled, onToggleSound, newOrderAlert }) {
   const [tab, setTab] = useState("pedidos");
+  const [counterOrderOpen, setCounterOrderOpen] = useState(false);
   const tabs = [
     ["pedidos", "Pedidos", ClipboardList],
     ["financeiro", "Financeiro", DollarSign],
@@ -2087,9 +2376,22 @@ function AdminPanel({ config, setConfig, prices, setPrices, ingredients, setIngr
         </div>
         <div className="max-w-5xl mx-auto px-4 sm:px-6 pb-2 flex items-center justify-between gap-3">
           {newOrderAlert ? <p className="text-sm font-bold text-emerald-700">🔔 Novo pedido recebido!</p> : <span />}
-          <button onClick={onToggleSound} className="text-sm font-semibold text-purple-700 hover:text-purple-950" title="Ativar ou desativar alertas sonoros">
-            {soundEnabled ? "🔊 Som ativado" : "🔇 Som desativado"}
-          </button>
+          <div className="flex items-center gap-3">
+  <button
+    onClick={() => setCounterOrderOpen(true)}
+    className="rounded-xl bg-purple-800 px-4 py-2 text-sm font-bold text-white hover:bg-purple-900"
+  >
+    🛒 Novo pedido balcão
+  </button>
+
+  <button
+    onClick={onToggleSound}
+    className="text-sm font-semibold text-purple-700 hover:text-purple-950"
+    title="Ativar ou desativar alertas sonoros"
+  >
+    {soundEnabled ? "🔊 Som ativado" : "🔇 Som desativado"}
+  </button>
+</div>
         </div>
         <div className="max-w-5xl mx-auto px-4 sm:px-6 flex gap-1 overflow-x-auto pb-2">
           {tabs.map(([id, label, Icon]) => (
@@ -2109,6 +2411,17 @@ function AdminPanel({ config, setConfig, prices, setPrices, ingredients, setIngr
         {tab === "ordem" && <AdminOrderTab config={config} setConfig={setConfig} ingredients={ingredients} />}
         {tab === "info" && <AdminInfoTab config={config} setConfig={setConfig} />}
       </div>
+
+            {counterOrderOpen && (
+        <CounterOrderModal
+          prices={prices}
+          ingredients={ingredients}
+          ingredientOrder={config.ingredient_order}
+          fruitOrder={config.fruit_order}
+          onClose={() => setCounterOrderOpen(false)}
+        />
+      )}
+
     </div>
   );
 }
@@ -2317,6 +2630,7 @@ useEffect(() => {
       deliveryFee,
       paymentMethod: customer.payment,
       total: subtotal + deliveryFee,
+      orderSource: "delivery",
       status: "novo",
     };
 
@@ -2331,6 +2645,7 @@ useEffect(() => {
         delivery_region: order.deliveryRegion,
         delivery_fee: order.deliveryFee,
         payment_method: order.customer.payment,
+        order_source: order.orderSource,
         total: order.total,
         status: order.status,
       });
