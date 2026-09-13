@@ -11,28 +11,59 @@ import { supabase } from "./src/supabase.js";
 import { QRCodeSVG } from "qrcode.react";
 
 let adminAudioContext;
+let audioContextInitialized = false;
+
+function initializeAudioContext() {
+  if (audioContextInitialized) return adminAudioContext;
+
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextClass) return null;
+
+  try {
+    adminAudioContext = new AudioContextClass();
+    audioContextInitialized = true;
+    return adminAudioContext;
+  } catch (error) {
+    console.error("Erro ao inicializar AudioContext:", error);
+    return null;
+  }
+}
 
 function playNewOrderSound() {
-  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-  if (!AudioContextClass) return;
-  adminAudioContext ||= new AudioContextClass();
-  if (adminAudioContext.state === "suspended") {
-    adminAudioContext.resume().catch(() => {});
+  const context = initializeAudioContext();
+  if (!context) return;
+
+  // Tenta resumir o AudioContext se estiver suspenso
+  if (context.state === "suspended") {
+    context.resume().catch((error) => {
+      console.error("Erro ao resumir AudioContext:", error);
+    });
   }
-  const now = adminAudioContext.currentTime;
-  [0, 0.22, 0.44].forEach((offset, index) => {
-    const oscillator = adminAudioContext.createOscillator();
-    const gain = adminAudioContext.createGain();
-    oscillator.type = "sine";
-    oscillator.frequency.value = [880, 1046, 1318][index];
-    gain.gain.setValueAtTime(0.0001, now + offset);
-    gain.gain.exponentialRampToValueAtTime(0.16, now + offset + 0.02);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + offset + 0.18);
-    oscillator.connect(gain);
-    gain.connect(adminAudioContext.destination);
-    oscillator.start(now + offset);
-    oscillator.stop(now + offset + 0.2);
-  });
+
+  // Verifica se o contexto está pronto para reprodução
+  if (context.state !== "running") {
+    console.warn("AudioContext não está pronto para reprodução:", context.state);
+    return;
+  }
+
+  try {
+    const now = context.currentTime;
+    [0, 0.22, 0.44].forEach((offset, index) => {
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+      oscillator.type = "sine";
+      oscillator.frequency.value = [880, 1046, 1318][index];
+      gain.gain.setValueAtTime(0.0001, now + offset);
+      gain.gain.exponentialRampToValueAtTime(0.16, now + offset + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + offset + 0.18);
+      oscillator.connect(gain);
+      gain.connect(context.destination);
+      oscillator.start(now + offset);
+      oscillator.stop(now + offset + 0.2);
+    });
+  } catch (error) {
+    console.error("Erro ao reproduzir som:", error);
+  }
 }
 
   /* ============================================================
@@ -2660,10 +2691,14 @@ function AdminPanel({ config, setConfig, prices, setPrices, ingredients, setIngr
 
   <button
     onClick={onToggleSound}
-    className="text-sm font-semibold text-purple-700 hover:text-purple-950"
-    title="Ativar ou desativar alertas sonoros"
+    className={`text-sm font-semibold px-3 py-1.5 rounded-lg transition-colors ${
+      soundEnabled
+        ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-200"
+        : "bg-purple-100 text-purple-700 hover:bg-purple-200"
+    }`}
+    title={soundEnabled ? "Desativar alertas sonoros" : "Ativar alertas sonoros"}
   >
-    {soundEnabled ? "🔊 Som ativado" : "🔇 Som desativado"}
+    {soundEnabled ? "🔊 Som ativado" : "🔇 Ativar som"}
   </button>
 </div>
         </div>
@@ -2847,12 +2882,29 @@ useEffect(() => {
   };
 }, [view, adminAuthed, ordersLoaded]);
 
-  const toggleAdminSound = () => {
+  const toggleAdminSound = async () => {
     const nextEnabled = !soundEnabled;
+
+    if (nextEnabled) {
+      // Tenta inicializar o AudioContext quando o usuário ativa o som
+      const context = initializeAudioContext();
+      if (context && context.state === "suspended") {
+        try {
+          await context.resume();
+        } catch (error) {
+          console.error("Erro ao resumir AudioContext:", error);
+        }
+      }
+    }
+
     soundEnabledRef.current = nextEnabled;
     setSoundEnabled(nextEnabled);
     localStorage.setItem("acai_boca_roxa_admin_sound_enabled", String(nextEnabled));
-    if (nextEnabled) playNewOrderSound();
+
+    if (nextEnabled) {
+      // Toca um som de teste para confirmar que o áudio está funcionando
+      setTimeout(() => playNewOrderSound(), 100);
+    }
   };
 
   const scrollTo = (id) => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
