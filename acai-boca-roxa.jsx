@@ -109,15 +109,17 @@ async function playNewOrderSound() {
     barca: "Barca",
   };
 
-  const CATEGORY_EMOJI = {
-    acai: "🍧",
-    cupuacu: "🍦",
-    casadinho: "🍨",
-    tigela: "🥣",
-    barca: "🛶",
-  };
-
   const CATEGORIES = ["acai", "cupuacu", "casadinho", "tigela", "barca"];
+
+  const BASE_PRODUCTS = [
+    { key: "acai-copo", category: "acai", label: "Açaí no copo", image: "/produtos/acai-copo.png", sizes: SIZES_CUP.filter((s) => s !== 1000) },
+    { key: "acai-1litro", category: "acai", label: "Açaí 1 litro", image: "/produtos/acai-1-litro.png", sizes: [1000] },
+    { key: "cupuacu-copo", category: "cupuacu", label: "Cupuaçu no copo", image: "/produtos/cupuacu-copo.png", sizes: SIZES_CUP.filter((s) => s !== 1000) },
+    { key: "cupuacu-1litro", category: "cupuacu", label: "Cupuaçu 1 litro", image: "/produtos/cupuacu-1-litro.png", sizes: [1000] },
+    { key: "casadinho", category: "casadinho", label: "Casadinho", image: "/produtos/casadinho-copo.png", sizes: SIZE_OPTIONS.casadinho },
+    { key: "tigela", category: "tigela", label: "Tigela", image: "/produtos/tigela.png", sizes: SIZE_OPTIONS.tigela },
+    { key: "barca", category: "barca", label: "Barca", image: "/produtos/barca.jfif", sizes: SIZE_OPTIONS.barca },
+  ];
 
   const DELIVERY_FEES = {
     "Ermida Dom Bosco": 15,
@@ -311,6 +313,15 @@ async function playNewOrderSound() {
     return `${CATEGORY_LABEL[category]} ${size} ml`;
   }
 
+  function productImage(category, size) {
+    if (category === "tigela") return "/produtos/tigela.png";
+    if (category === "barca") return "/produtos/barca.jfif";
+    if (category === "casadinho") return "/produtos/casadinho-copo.png";
+    if (category === "acai") return size === 1000 ? "/produtos/acai-1-litro.png" : "/produtos/acai-copo.png";
+    if (category === "cupuacu") return size === 1000 ? "/produtos/cupuacu-1-litro.png" : "/produtos/cupuacu-copo.png";
+    return null;
+  }
+
   function unitPrice(item, prices) {
     if (Number.isFinite(item.finalPrice)) return item.finalPrice;
     return calculateProductPrice(item, prices).total;
@@ -462,9 +473,11 @@ async function playNewOrderSound() {
   function SizeCard({ category, size, prices, onAdd }) {
     const price = prices[category][size];
     const label = category === "acai" || category === "cupuacu" || category === "casadinho" ? `${size} ml` : itemLabel(category, size);
+    const img = productImage(category, size);
     return (
-      <div className="flex items-center justify-between rounded-2xl border border-purple-100 bg-white px-4 py-3 hover:shadow-md hover:shadow-purple-900/5 transition-shadow">
-        <div>
+      <div className="flex items-center gap-3 rounded-2xl border border-purple-100 bg-white px-4 py-3 hover:shadow-md hover:shadow-purple-900/5 transition-shadow">
+        {img && <img src={img} alt={label} className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl object-cover shrink-0" loading="lazy" />}
+        <div className="flex-1 min-w-0">
           <p className="font-semibold text-purple-950">{label}</p>
           <p className="text-purple-600 text-sm">{formatBRL(price)}</p>
         </div>
@@ -632,38 +645,38 @@ async function playNewOrderSound() {
     ============================================================ */
 
   function MenuSection({ prices, onRequestAdd }) {
-    const [cat, setCat] = useState(null);
-    const sizes = cat ? SIZE_OPTIONS[cat] : [];
+    const [base, setBase] = useState(null);
+    const sizes = base ? base.sizes : [];
 
     return (
       <section id="cardapio" className="max-w-6xl mx-auto px-4 sm:px-6 py-16">
         <h2 className="text-3xl sm:text-4xl font-black text-purple-950 text-center" style={{ fontFamily: "'Fraunces', serif" }}>Nosso Cardápio</h2>
-        <p className="text-center text-purple-500 mt-2 mb-8">Escolha a categoria e o tamanho ideal para você</p>
+        <p className="text-center text-purple-500 mt-2 mb-8">Escolha a base e o tamanho ideal para você</p>
 
-        {!cat ? (
+        {!base ? (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-            {CATEGORIES.map((c) => (
-              <button key={c} onClick={() => setCat(c)} className="rounded-2xl border-2 border-purple-100 bg-white p-5 sm:p-6 text-center transition-all hover:border-purple-400 hover:bg-purple-50/50 hover:shadow-md hover:shadow-purple-900/5 active:scale-[.98]">
-                <span className="block text-3xl sm:text-4xl mb-2.5">{CATEGORY_EMOJI[c]}</span>
-                <span className="block font-bold text-purple-950">{CATEGORY_LABEL[c]}</span>
-                <span className="mt-1 block text-xs font-medium text-purple-400">{SIZE_OPTIONS[c].length} opções</span>
+            {BASE_PRODUCTS.map((p) => (
+              <button key={p.key} onClick={() => setBase(p)} className="rounded-2xl border-2 border-purple-100 bg-white p-4 sm:p-5 text-center transition-all hover:border-purple-400 hover:bg-purple-50/50 hover:shadow-md hover:shadow-purple-900/5 active:scale-[.98]">
+                <img src={p.image} alt={p.label} className="w-20 h-20 sm:w-24 sm:h-24 mx-auto rounded-2xl object-cover" loading="lazy" />
+                <span className="mt-3 block font-bold text-purple-950">{p.label}</span>
+                <span className="mt-1 block text-xs font-medium text-purple-400">{p.sizes.length} opções</span>
               </button>
             ))}
           </div>
         ) : (
           <>
             <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-              <button onClick={() => setCat(null)} className="inline-flex items-center gap-1.5 text-sm font-semibold text-purple-700 hover:text-purple-950 transition-colors">
-                <ArrowLeft size={15} /> Categorias
+              <button onClick={() => setBase(null)} className="inline-flex items-center gap-1.5 text-sm font-semibold text-purple-700 hover:text-purple-950 transition-colors">
+                <ArrowLeft size={15} /> Bases
               </button>
               <div className="flex gap-2 overflow-x-auto pb-1 justify-start sm:justify-center">
-                {CATEGORIES.map((c) => (
-                  <Pill key={c} active={cat === c} onClick={() => setCat(c)}>{CATEGORY_LABEL[c]}</Pill>
+                {BASE_PRODUCTS.map((p) => (
+                  <Pill key={p.key} active={base.key === p.key} onClick={() => setBase(p)}>{p.label}</Pill>
                 ))}
               </div>
             </div>
 
-            {cat === "casadinho" && (
+            {base.category === "casadinho" && (
               <div className="flex items-center gap-3 mb-6 justify-center text-sm text-purple-600">
                 <div className="flex h-5 w-24 rounded-full overflow-hidden border border-purple-200">
                   <div className="w-1/2 bg-purple-800" />
@@ -675,7 +688,7 @@ async function playNewOrderSound() {
 
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {sizes.map((s) => (
-                <SizeCard key={s} category={cat} size={s} prices={prices} onAdd={(size) => onRequestAdd(cat, size)} />
+                <SizeCard key={s} category={base.category} size={s} prices={prices} onAdd={(size) => onRequestAdd(base.category, size)} />
               ))}
             </div>
           </>
