@@ -173,6 +173,7 @@ async function playNewOrderSound() {
 
   const LAYER_LABELS = ["1ª camada", "2ª camada", "3ª camada"];
   const LAYER_INGREDIENT_LIMIT = 2;
+  const LAYER_FLOW_STEPS = ["Camadas", "Ingredientes extras", "Frutas extras", "Cobertura", "Resumo"];
   const LAYERED_CUP_CATEGORIES = ["acai", "cupuacu", "casadinho"];
   const isLayeredCup = (category, size) => size === 700 && LAYERED_CUP_CATEGORIES.includes(category);
 
@@ -400,10 +401,10 @@ async function playNewOrderSound() {
           lines.push(`${layerName}: ${item.layers[i]?.ingredients?.length ? item.layers[i].ingredients.map((x) => x.name).join(", ") : "—"}`);
         });
         if (item.extras?.length) {
-          lines.push(`Ingredientes extras: ${item.extras.map((x) => x.name).join(", ")}`);
+          lines.push(`Ingredientes extras — copinho 100 ml: ${item.extras.map((x) => x.name).join(", ")}`);
         }
         if (item.fruits?.length) {
-          lines.push("Frutas extras:");
+          lines.push("Frutas extras — copinho 100 ml:");
           getFruitDisplayList(item).forEach((label) => lines.push(`- ${label}`));
         }
       } else {
@@ -582,77 +583,146 @@ async function playNewOrderSound() {
     );
   }
 
-  function LayerCupView({ layers, onToggleLayer, availableIngredients, extras, onToggleExtra, fruits, onToggleFruit, availableFruits, fruitOpts, excess, topping, setTopping, calculation, totalCount }) {
-    const limit = calculation?.rule?.ingredientLimit ?? 0;
+  function LayerCupView({ layers, onToggleLayer, availableIngredients, extras, onToggleExtra, fruits, onToggleFruit, availableFruits, fruitOpts, excess, topping, setTopping, calculation, flowStep, onFlowStepChange, onExit }) {
+    const flowProgress = flowStep <= 2 ? 0 : flowStep - 2;
+    const showBack = flowStep > 0 || !!onExit;
+    const isSummary = flowStep === 6;
+
+    const nav = !isSummary && (
+      <div className="flex items-center justify-between mt-6 gap-3">
+        {showBack ? (
+          <button onClick={() => { if (flowStep > 0) onFlowStepChange(flowStep - 1); else onExit(); }} className="flex items-center gap-1 text-sm text-purple-500 hover:text-purple-800 py-2">
+            <ArrowLeft size={14} /> voltar
+          </button>
+        ) : <span />}
+        <button onClick={() => onFlowStepChange(flowStep + 1)} className="bg-purple-800 text-white font-semibold px-7 py-3 rounded-full hover:bg-purple-900 active:scale-[.98] transition-all flex items-center gap-1.5">
+          Continuar <ChevronRight size={16} />
+        </button>
+      </div>
+    );
+
     return (
-      <div className="lg:grid lg:grid-cols-[250px_1fr] lg:gap-6">
-        <div className="space-y-4">
-          <div className="rounded-2xl bg-purple-50/80 border border-purple-100 p-4">
-            <p className="text-xs font-bold text-purple-400 uppercase tracking-widest mb-2">Seu copo de 700 ml</p>
-            <LayerCupVisual layers={layers} />
-          </div>
-          <div className="rounded-2xl bg-purple-50 p-4 text-sm text-purple-800">
-            <p className="font-bold text-purple-950 mb-1">Resumo da montagem</p>
-            {LAYER_LABELS.map((label, i) => (
-              <p key={label} className="mt-1">
-                <span className="font-semibold">{label}:</span>{" "}
-                {layers[i].length ? layers[i].map((ing) => ing.name).join(", ") : "—"}
-              </p>
-            ))}
-            {extras?.length > 0 && (
-              <p className="mt-1"><span className="font-semibold">Ingredientes extras:</span> {extras.map((ing) => ing.name).join(", ")}</p>
-            )}
-            {fruits?.length > 0 && (
-              <p className="mt-1"><span className="font-semibold">Frutas extras:</span> {fruits.map((fruit) => fruit.name).join(", ")}</p>
-            )}
+      <div>
+        <div className="mb-4">
+          <p className="text-xl font-black text-purple-950">🥤 Monte seu copo de 700 ml</p>
+          <p className="text-sm text-purple-500 mt-0.5">Você vai montar 3 camadas de açaí. Em cada camada, escolha até 2 ingredientes.</p>
+        </div>
+
+        <div className="flex items-center justify-center gap-1.5 sm:gap-2 mb-5 flex-wrap">
+          {LAYER_FLOW_STEPS.map((label, i) => (
+            <React.Fragment key={label}>
+              <span className={`flex items-center gap-1.5 text-xs sm:text-sm font-semibold ${i < flowProgress ? "text-emerald-600" : i === flowProgress ? "text-purple-900" : "text-purple-300"}`}>
+                <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] ${i < flowProgress ? "bg-emerald-500 text-white" : i === flowProgress ? "bg-purple-800 text-white" : "bg-purple-100 text-purple-400"}`}>{i + 1}</span>
+                <span>{label}</span>
+              </span>
+              {i < LAYER_FLOW_STEPS.length - 1 && <div className={`h-px w-4 sm:w-8 ${i < flowProgress ? "bg-emerald-400" : "bg-purple-200"}`} />}
+            </React.Fragment>
+          ))}
+        </div>
+
+        <div className="flex items-center justify-center mb-5">
+          <div className="rounded-2xl border border-purple-100 bg-purple-50/60 p-3 flex items-center gap-4 overflow-hidden">
+            <div className="scale-90 origin-center shrink-0"><LayerCupVisual layers={layers} /></div>
+            <div className="text-xs space-y-1 text-purple-700 min-w-0">
+              {LAYER_LABELS.map((label, i) => (
+                <p key={label}>
+                  <span className="font-bold text-purple-900">{label}:</span>{" "}
+                  {layers[i]?.length ? layers[i].map((x) => x.name).join(", ") : "vazio"}
+                </p>
+              ))}
+            </div>
           </div>
         </div>
-        <div className="mt-6 lg:mt-0 space-y-5">
-          {LAYER_LABELS.map((label, i) => (
-            <div key={label}>
-              <p className="font-bold text-purple-900 mb-2 flex items-center gap-2">
-                {label}
-                <span className={`text-xs font-semibold ${layers[i].length >= LAYER_INGREDIENT_LIMIT ? "text-emerald-600" : "text-purple-400"}`}>{layers[i].length}/{LAYER_INGREDIENT_LIMIT}</span>
-              </p>
-              <IngredientGrid
-                ingredients={availableIngredients}
-                selected={layers[i]}
-                onToggle={(ing) => onToggleLayer(i, ing)}
-                showPrices={false}
-                includedLimit={LAYER_INGREDIENT_LIMIT}
-                extraLabel="Ingrediente extra"
-                fullNames
-              />
+
+        {flowStep <= 2 && (
+          <div>
+            <p className="text-2xl font-black text-purple-950">🥤 {LAYER_LABELS[flowStep]}</p>
+            <p className="text-sm text-purple-500 mt-1 mb-4">Seu açaí + até 2 ingredientes — ficam dentro do copo de 700 ml.</p>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-sm font-semibold text-purple-800">Escolha os ingredientes</p>
+              <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${layers[flowStep].length >= LAYER_INGREDIENT_LIMIT ? "bg-emerald-50 text-emerald-700" : "bg-purple-100 text-purple-700"}`}>
+                {layers[flowStep].length} de {LAYER_INGREDIENT_LIMIT}
+              </span>
             </div>
-          ))}
-          <div>
-            <p className="font-bold text-purple-900 mb-2">Ingredientes extras</p>
-            <p className="text-xs text-purple-500 mb-2">Fora das camadas — cada extra soma +{formatBRL(excess)}.</p>
-            <IngredientGrid ingredients={availableIngredients} selected={extras || []} onToggle={onToggleExtra} showPrices={false} includedLimit={0} extraLabel="Ingrediente extra" getExtraPrice={() => excess} fullNames />
+            <IngredientGrid ingredients={availableIngredients} selected={layers[flowStep]} onToggle={(ing) => onToggleLayer(flowStep, ing)} showPrices={false} includedLimit={LAYER_INGREDIENT_LIMIT} extraLabel="Ingrediente extra" fullNames />
+            {layers[flowStep].length >= LAYER_INGREDIENT_LIMIT && <p className="text-xs text-emerald-700 mt-2">Máximo de 2 ingredientes por camada atingido.</p>}
+            {nav}
           </div>
+        )}
+
+        {flowStep === 3 && (
           <div>
-            <p className="font-bold text-purple-900 mb-2">Frutas extras</p>
-            <p className="text-xs text-purple-500 mb-2">Frutas fora das camadas — cobradas por unidade.</p>
-            <IngredientGrid ingredients={availableFruits} selected={fruits || []} onToggle={onToggleFruit} showPrices={false} includedLimit={0} extraLabel="Fruta extra" getExtraPrice={(item) => { const fruit = (fruitOpts || []).find((f) => f.id === item.id); return fruit?.price ?? excess; }} fullNames />
+            <p className="text-2xl font-black text-purple-950">🥤 Ingredientes extras</p>
+            <div className="mt-2 mb-4 rounded-xl bg-purple-50 border border-purple-100 p-3">
+              <p className="text-sm font-bold text-purple-900">Copinho separado de 100 ml</p>
+              <p className="text-xs text-purple-500 mt-0.5">Os ingredientes extras vão em um copinho separado, não dentro do copo de 700 ml.</p>
+            </div>
+            <p className="text-sm font-semibold text-purple-800 mb-2">Cada extra soma +{formatBRL(excess)}</p>
+            <IngredientGrid ingredients={availableIngredients} selected={extras} onToggle={onToggleExtra} showPrices={false} includedLimit={0} extraLabel="Ingrediente extra" getExtraPrice={() => excess} fullNames />
+            {nav}
           </div>
+        )}
+
+        {flowStep === 4 && (
           <div>
-            <p className="font-bold text-purple-900 mb-2">Cobertura incluída</p>
+            <p className="text-2xl font-black text-purple-950">🍓 Frutas extras</p>
+            <div className="mt-2 mb-4 rounded-xl bg-purple-50 border border-purple-100 p-3">
+              <p className="text-sm font-bold text-purple-900">Copinho separado de 100 ml</p>
+              <p className="text-xs text-purple-500 mt-0.5">As frutas extras vão em um copinho separado — cada uma com seu próprio preço.</p>
+            </div>
+            <IngredientGrid ingredients={availableFruits} selected={fruits} onToggle={onToggleFruit} showPrices={false} includedLimit={0} extraLabel="Fruta extra" getExtraPrice={(item) => { const fruit = (fruitOpts || []).find((f) => f.id === item.id); return fruit?.price ?? excess; }} fullNames />
+            {nav}
+          </div>
+        )}
+
+        {flowStep === 5 && (
+          <div>
+            <p className="text-2xl font-black text-purple-950">🍫 Cobertura</p>
+            <p className="text-sm text-purple-500 mt-1 mb-4">Escolha uma cobertura incluída para o seu copo.</p>
             <div className="grid grid-cols-2 gap-2">
               {TOPPING_OPTIONS.map((option) => (
-                <button key={option.id} onClick={() => setTopping(option)} className={`rounded-xl border px-3 py-2 text-left text-sm ${topping?.id === option.id ? "border-purple-700 bg-purple-50" : "border-purple-100"}`}>
+                <button key={option.id} onClick={() => setTopping(option)} className={`rounded-xl border px-3 py-3 text-left text-sm font-semibold ${topping?.id === option.id ? "border-purple-700 bg-purple-50 text-purple-900" : "border-purple-100 text-purple-800"}`}>
                   {option.name}
                   {topping?.id === option.id && <Check size={14} className="inline ml-2 text-purple-700" />}
                 </button>
               ))}
             </div>
+            {nav}
           </div>
-          <div className="rounded-xl bg-purple-50 p-3 text-sm text-purple-800 space-y-1">
-            <p>Ingredientes: {totalCount}/{limit}</p>
-            <p className="text-xs text-purple-500">Máx. {LAYER_INGREDIENT_LIMIT} por camada · até {limit} no total.</p>
-            {calculation?.ingredientExtraCount > 0 && <p>{calculation.ingredientExtraCount} ingrediente(s) extra(s): +{formatBRL(calculation.ingredientExcessPrice)}</p>}
-            {calculation?.fruitExtraCount > 0 && <p>{calculation.fruitExtraCount} fruta(s) extra(s): +{formatBRL(calculation.fruitExcessPrice)}</p>}
+        )}
+
+        {isSummary && (
+          <div>
+            <p className="text-2xl font-black text-purple-950">🥤 Seu copo de 700 ml</p>
+            <div className="mt-3 space-y-3 text-sm">
+              {LAYER_LABELS.map((label, i) => (
+                <div key={label} className="rounded-xl border border-purple-100 bg-purple-50/60 p-3">
+                  <p className="font-semibold text-purple-950">{label}</p>
+                  <p className="text-purple-700 mt-0.5">{["Açaí", ...layers[i].map((x) => x.name)].join(" + ")}</p>
+                </div>
+              ))}
+              <div className="rounded-xl border border-purple-100 bg-purple-50/60 p-3">
+                <p className="font-semibold text-purple-950">🥤 Copinho separado de 100 ml — Ingredientes extras</p>
+                <p className="text-purple-700 mt-0.5">{extras.length ? extras.map((x) => x.name).join(", ") : "Nenhum"}{extras.length > 0 ? ` · +${formatBRL(extras.length * excess)}` : ""}</p>
+              </div>
+              <div className="rounded-xl border border-purple-100 bg-purple-50/60 p-3">
+                <p className="font-semibold text-purple-950">🍓 Copinho separado de 100 ml — Frutas extras</p>
+                <p className="text-purple-700 mt-0.5">{fruits.length ? fruits.map((x) => x.name).join(", ") : "Nenhum"}</p>
+              </div>
+              <div className="rounded-xl border border-purple-100 bg-purple-50/60 p-3">
+                <p className="font-semibold text-purple-950">🍫 Cobertura</p>
+                <p className="text-purple-700 mt-0.5">{topping?.name || "—"}</p>
+              </div>
+              <div className="flex items-center justify-between rounded-xl bg-purple-900 text-white p-4">
+                <p className="font-bold">Total</p>
+                <p className="font-black text-lg">{formatBRL(calculation.total)}</p>
+              </div>
+              <button onClick={() => onFlowStepChange(5)} className="flex items-center gap-1 text-sm text-purple-500 hover:text-purple-800">
+                <ArrowLeft size={14} /> voltar para a cobertura
+              </button>
+            </div>
           </div>
-        </div>
+        )}
       </div>
     );
   }
@@ -663,6 +733,7 @@ async function playNewOrderSound() {
     const [layers, setLayers] = useState([[],[],[]]);
     const [extras, setExtras] = useState([]);
     const [topping, setTopping] = useState(TOPPING_OPTIONS[0]);
+    const [flowStep, setFlowStep] = useState(0);
     const fruitOpts = fruitOptions || DEFAULT_FRUIT_OPTIONS;
     const excess = excessPrice ?? DEFAULT_EXCESS_PRICE;
     const isLayered = isLayeredCup(category, size);
@@ -673,7 +744,6 @@ async function playNewOrderSound() {
     const toggleExtra = (ing) => setExtras((prev) => (prev.some((i) => i.id === ing.id) ? prev.filter((i) => i.id !== ing.id) : [...prev, ing]));
     const toggleLayer = (layerIndex, ing) => setLayers((prev) => prev.map((arr, i) => { if (i !== layerIndex) return arr; if (arr.some((x) => x.id === ing.id)) return arr.filter((x) => x.id !== ing.id); if (arr.length >= LAYER_INGREDIENT_LIMIT) return arr; return [...arr, ing]; }));
     const flatLayers = layers.flat();
-    const totalCount = isLayered ? flatLayers.length : ings.length;
     const layersPayload = LAYER_LABELS.map((name, i) => ({ name, ingredients: layers[i] }));
     const calculation = isLayered
       ? calculateLayeredPrice({ category, size, layers, extras, fruits, topping }, prices, { fruitOptions: fruitOpts, excessPrice: excess })
@@ -687,7 +757,7 @@ async function playNewOrderSound() {
       <Modal
         title={label}
         onClose={onClose}
-        footer={
+        footer={(!isLayered || flowStep === 6) ? (
           <div className="space-y-2">
             <button onClick={() => onConfirm(buildSelection())} className="w-full py-3 rounded-xl bg-purple-800 text-white font-semibold flex items-center justify-center gap-2 hover:bg-purple-900 active:scale-[.98] transition-all">
               <ShoppingCart size={16} /> Adicionar ao carrinho — {formatBRL(calculation.total)}
@@ -698,7 +768,7 @@ async function playNewOrderSound() {
               </button>
             )}
           </div>
-        }
+        ) : null}
       >
         {isLayered ? (
           <LayerCupView
@@ -715,7 +785,8 @@ async function playNewOrderSound() {
             topping={topping}
             setTopping={setTopping}
             calculation={calculation}
-            totalCount={totalCount}
+            flowStep={flowStep}
+            onFlowStepChange={setFlowStep}
           />
         ) : (
           <>
@@ -931,6 +1002,7 @@ async function playNewOrderSound() {
     const [layers, setLayers] = useState([[],[],[]]);
     const [extras, setExtras] = useState([]);
     const [topping, setTopping] = useState(TOPPING_OPTIONS[0]);
+    const [flowStep, setFlowStep] = useState(0);
     const [showSummaryOptions, setShowSummaryOptions] = useState(false);
 
     useEffect(() => {
@@ -944,6 +1016,7 @@ async function playNewOrderSound() {
         }
         setExtras(prefill.extras || []);
         setTopping(prefill.topping || null);
+        setFlowStep(0);
         setStep(2);
         clearPrefill();
       }
@@ -957,7 +1030,6 @@ async function playNewOrderSound() {
     const availableIngredients = sortBySavedOrder(ingredients.length > 0 ? [...normalIngredients(ingredients), ...ADDITIONAL_OPTIONS.filter((option) => !ingredients.some((ing) => ingredientNameKey(ing) === ingredientNameKey(option)))] : ADDITIONAL_OPTIONS, ingredientOrder);
     const availableFruits = sortBySavedOrder(fruitOpts, fruitOrder);
     const flatLayers = layers.flat();
-    const totalCount = isLayered ? flatLayers.length : ings.length;
     const layersPayload = LAYER_LABELS.map((name, i) => ({ name, ingredients: layers[i] }));
     const calculation = base && size ? (isLayered
       ? calculateLayeredPrice({ category: base, size, layers, extras, fruits, topping }, prices, { fruitOptions: fruitOpts, excessPrice: excess })
@@ -967,7 +1039,7 @@ async function playNewOrderSound() {
     const toggleFruit = (fruit) => setFruits((prev) => (prev.some((i) => i.id === fruit.id) ? prev.filter((i) => i.id !== fruit.id) : [...prev, fruit]));
     const toggleLayer = (layerIndex, ing) => setLayers((prev) => prev.map((arr, i) => { if (i !== layerIndex) return arr; if (arr.some((x) => x.id === ing.id)) return arr.filter((x) => x.id !== ing.id); if (arr.length >= LAYER_INGREDIENT_LIMIT) return arr; return [...arr, ing]; }));
     const toggleExtra = (ing) => setExtras((prev) => (prev.some((i) => i.id === ing.id) ? prev.filter((i) => i.id !== ing.id) : [...prev, ing]));
-    const reset = () => { setStep(0); setBase(null); setSize(null); setIngs([]); setFruits([]); setLayers([[],[],[]]); setExtras([]); setTopping(TOPPING_OPTIONS[0]); };
+    const reset = () => { setFlowStep(0); setStep(0); setBase(null); setSize(null); setIngs([]); setFruits([]); setLayers([[],[],[]]); setExtras([]); setTopping(TOPPING_OPTIONS[0]); };
     const buildSelection = () => isLayered
       ? { category: base, size, layers: layersPayload, ingredients: flatLayers, extras, fruits, topping, calculation }
       : { category: base, size, ingredients: ings, fruits, topping, calculation };
@@ -1037,7 +1109,9 @@ async function playNewOrderSound() {
                     topping={topping}
                     setTopping={setTopping}
                     calculation={calculation}
-                    totalCount={totalCount}
+                    flowStep={flowStep}
+                    onFlowStepChange={setFlowStep}
+                    onExit={() => setStep(1)}
                   />
                 ) : (
                   <>
@@ -1057,36 +1131,51 @@ async function playNewOrderSound() {
                     </div>
                   </>
                 )}
-                {showSummaryOptions && (
-                  <div className="fixed inset-0 z-40" onClick={() => setShowSummaryOptions(false)} />
-                )}
-                <div className="relative flex items-center justify-between mt-6 gap-3">
-                  <button onClick={() => setStep(1)} className="text-sm text-purple-500 flex items-center gap-1 hover:text-purple-800"><ArrowLeft size={14} /> voltar</button>
-                  <div className="relative">
-                    <button onClick={() => setShowSummaryOptions((v) => !v)} className="bg-purple-800 text-white font-semibold px-6 py-2.5 rounded-full hover:bg-purple-900">Ver resumo</button>
+                {isLayered ? (
+                  flowStep === 6 && (
+                    <div className="mt-6 flex flex-col sm:flex-row gap-2">
+                      <button onClick={() => { addToCart(buildSelection()); reset(); }} className="flex-1 py-3 rounded-xl bg-purple-800 text-white font-semibold flex items-center justify-center gap-2 hover:bg-purple-900 active:scale-[.98] transition-all">
+                        <ShoppingCart size={16} /> Adicionar ao carrinho — {formatBRL(calculation.total)}
+                      </button>
+                      <button onClick={() => { addToCart(buildSelection()); reset(); onOpenCart(); }} className="py-3 rounded-xl border border-purple-800 text-purple-800 font-semibold flex items-center justify-center gap-2 hover:bg-purple-50 active:scale-[.98] transition-all">
+                        Ir para o carrinho <ChevronRight size={16} />
+                      </button>
+                    </div>
+                  )
+                ) : (
+                  <>
                     {showSummaryOptions && (
-                      <div className="absolute bottom-full mb-2 right-0 bg-white rounded-lg shadow-lg border border-purple-200 p-2 z-50 min-w-[200px]">
-                        <button onClick={() => {
-                          setShowSummaryOptions(false);
-                          if (base && size) {
-                            addToCart(buildSelection());
-                          }
-                        }} className="w-full text-left px-3 py-2 text-sm text-purple-700 hover:bg-purple-50 rounded">
-                          Adicionar ao carrinho
-                        </button>
-                        <button onClick={() => {
-                          setShowSummaryOptions(false);
-                          if (base && size) {
-                            addToCart(buildSelection());
-                            onOpenCart();
-                          }
-                        }} className="w-full text-left px-3 py-2 text-sm text-purple-700 hover:bg-purple-50 rounded">
-                          Ir para o carrinho
-                        </button>
-                      </div>
+                      <div className="fixed inset-0 z-40" onClick={() => setShowSummaryOptions(false)} />
                     )}
-                  </div>
-                </div>
+                    <div className="relative flex items-center justify-between mt-6 gap-3">
+                      <button onClick={() => setStep(1)} className="text-sm text-purple-500 flex items-center gap-1 hover:text-purple-800"><ArrowLeft size={14} /> voltar</button>
+                      <div className="relative">
+                        <button onClick={() => setShowSummaryOptions((v) => !v)} className="bg-purple-800 text-white font-semibold px-6 py-2.5 rounded-full hover:bg-purple-900">Ver resumo</button>
+                        {showSummaryOptions && (
+                          <div className="absolute bottom-full mb-2 right-0 bg-white rounded-lg shadow-lg border border-purple-200 p-2 z-50 min-w-[200px]">
+                            <button onClick={() => {
+                              setShowSummaryOptions(false);
+                              if (base && size) {
+                                addToCart(buildSelection());
+                              }
+                            }} className="w-full text-left px-3 py-2 text-sm text-purple-700 hover:bg-purple-50 rounded">
+                              Adicionar ao carrinho
+                            </button>
+                            <button onClick={() => {
+                              setShowSummaryOptions(false);
+                              if (base && size) {
+                                addToCart(buildSelection());
+                                onOpenCart();
+                              }
+                            }} className="w-full text-left px-3 py-2 text-sm text-purple-700 hover:bg-purple-50 rounded">
+                              Ir para o carrinho
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
             )}
 
@@ -1112,13 +1201,13 @@ async function playNewOrderSound() {
                       ))}
                       {extras.length > 0 && (
                         <div>
-                          <p className="font-semibold">Ingredientes extras</p>
+                          <p className="font-semibold">Ingredientes extras — copinho 100 ml</p>
                           <ul>{extras.map((extra) => <li key={extra.id}>{extra.name} — Ingrediente extra +{formatBRL(excess)}</li>)}</ul>
                         </div>
                       )}
                       {fruits.length > 0 && (
                         <div className="text-sm text-purple-700">
-                          <p className="font-semibold">Frutas extras</p>
+                          <p className="font-semibold">Frutas extras — copinho 100 ml</p>
                           <ul>{fruits.map((fruit) => { const fruitDef = fruitOpts.find((f) => f.id === fruit.id); return <li key={fruit.id}>{fruit.name} — Fruta extra +{formatBRL(fruitDef?.price ?? excess)}</li>; })}</ul>
                         </div>
                       )}
@@ -1186,8 +1275,8 @@ async function playNewOrderSound() {
                                 {layerName}: {item.layers[i]?.ingredients?.length ? item.layers[i].ingredients.map((ing) => ing.name).join(", ") : "—"}
                               </p>
                             ))}
-                            {item.extras?.length > 0 && <p className="text-xs text-purple-500">Ingredientes extras: {item.extras.map((ing) => ing.name).join(", ")}</p>}
-                            {item.fruits?.length > 0 && <p className="text-xs text-purple-500">Frutas extras: {item.fruits.map((fruit) => fruit.name).join(", ")}</p>}
+                            {item.extras?.length > 0 && <p className="text-xs text-purple-500">Ingredientes extras (copinho 100 ml): {item.extras.map((ing) => ing.name).join(", ")}</p>}
+                            {item.fruits?.length > 0 && <p className="text-xs text-purple-500">Frutas extras (copinho 100 ml): {item.fruits.map((fruit) => fruit.name).join(", ")}</p>}
                           </div>
                         ) : (
                           <>
@@ -2296,8 +2385,8 @@ function printOrder(order) {
           ${
             item.layers?.length === 3
               ? LAYER_LABELS.map((layerName, i) => `<div class="bold">${escapeHtml(layerName)}:</div>${item.layers[i]?.ingredients?.length ? item.layers[i].ingredients.map((ing) => `<div>- ${escapeHtml(ing.name)}</div>`).join("") : "<div>- —</div>"}`).join("")
-                + (item.extras?.length ? `<div class="bold">Ingredientes extras:</div>${item.extras.map((extra) => `<div>- ${escapeHtml(extra.name)}</div>`).join("")}` : "")
-                + (item.fruits?.length ? `<div class="bold">Frutas extras:</div>${getFruitDisplayList(item).map((label) => `<div>- ${escapeHtml(label)}</div>`).join("")}` : "")
+                + (item.extras?.length ? `<div class="bold">Ingredientes extras — copinho 100 ml:</div>${item.extras.map((extra) => `<div>- ${escapeHtml(extra.name)}</div>`).join("")}` : "")
+                + (item.fruits?.length ? `<div class="bold">Frutas extras — copinho 100 ml:</div>${getFruitDisplayList(item).map((label) => `<div>- ${escapeHtml(label)}</div>`).join("")}` : "")
               : ""
           }
 
@@ -2793,13 +2882,13 @@ function CounterOrderModal({
                           ))}
                           {item.extras?.length > 0 && (
                             <p className="text-xs text-purple-500">
-                              Ingredientes extras:{" "}
+                              Ingredientes extras (copinho 100 ml):{" "}
                               {item.extras.map((extra) => extra.name).join(", ")}
                             </p>
                           )}
                           {item.fruits?.length > 0 && (
                             <p className="text-xs text-purple-500">
-                              Frutas extras:{" "}
+                              Frutas extras (copinho 100 ml):{" "}
                               {item.fruits.map((fruit) => fruit.name).join(", ")}
                             </p>
                           )}
@@ -3466,8 +3555,8 @@ function AdminOrdersTab({ orders, setOrders, showFinance = false }) {
                     {LAYER_LABELS.map((layerName, i) => (
                       <p key={layerName}>{layerName}: {it.layers[i]?.ingredients?.length ? it.layers[i].ingredients.map((ing) => ing.name).join(", ") : "—"}</p>
                     ))}
-                    {it.extras?.length > 0 && <p>Ingredientes extras: {it.extras.map((x) => x.name).join(", ")}</p>}
-                    {it.fruits?.length > 0 && <p>Frutas extras: {it.fruits.map((f) => f.name).join(", ")}</p>}
+                    {it.extras?.length > 0 && <p>Ingredientes extras (copinho 100 ml): {it.extras.map((x) => x.name).join(", ")}</p>}
+                    {it.fruits?.length > 0 && <p>Frutas extras (copinho 100 ml): {it.fruits.map((f) => f.name).join(", ")}</p>}
                   </div>
                 ) : (
                   <>
@@ -3521,8 +3610,8 @@ function AdminOrdersTab({ orders, setOrders, showFinance = false }) {
                       {LAYER_LABELS.map((layerName, i) => (
                         <p key={layerName}><strong>{layerName}:</strong> {item.layers[i]?.ingredients?.length ? item.layers[i].ingredients.map((ing) => ing.name).join(", ") : "—"}</p>
                       ))}
-                      {item.extras?.length > 0 && <p><strong>Ingredientes extras:</strong> {item.extras.map((extra) => extra.name).join(", ")}</p>}
-                      {item.fruits?.length > 0 && <p><strong>Frutas extras:</strong> {item.fruits.map((fruit) => fruit.name).join(", ")}</p>}
+                      {item.extras?.length > 0 && <p><strong>Ingredientes extras (copinho 100 ml):</strong> {item.extras.map((extra) => extra.name).join(", ")}</p>}
+                      {item.fruits?.length > 0 && <p><strong>Frutas extras (copinho 100 ml):</strong> {item.fruits.map((fruit) => fruit.name).join(", ")}</p>}
                     </div>
                   ) : (
                     <>
