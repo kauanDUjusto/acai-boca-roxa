@@ -3481,7 +3481,7 @@ export default function App() {
     return () => window.clearInterval(timer);
   }, []);
 
-  const getView = () => (window.location.pathname === "/gestao-abr7k2" ? "admin" : "site");
+  const getView = () => (window.location.pathname === "/painelbocaroxa" ? "admin" : "site");
   const [view, setView] = useState(getView());
   const [adminAuthed, setAdminAuthed] = useState(false);
   const [authLoading, setAuthLoading] = useState(true);
