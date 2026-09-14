@@ -109,6 +109,14 @@ async function playNewOrderSound() {
     barca: "Barca",
   };
 
+  const CATEGORY_EMOJI = {
+    acai: "🍧",
+    cupuacu: "🍦",
+    casadinho: "🍨",
+    tigela: "🥣",
+    barca: "🛶",
+  };
+
   const CATEGORIES = ["acai", "cupuacu", "casadinho", "tigela", "barca"];
 
   const DELIVERY_FEES = {
@@ -494,7 +502,7 @@ async function playNewOrderSound() {
     MODAL: escolher ingredientes ao adicionar produto do cardápio
     ============================================================ */
 
-  function AddProductModal({ category, size, prices, ingredients, ingredientOrder, fruitOrder, onClose, onConfirm }) {
+  function AddProductModal({ category, size, prices, ingredients, ingredientOrder, fruitOrder, onClose, onConfirm, onGoToCart }) {
     const [ings, setIngs] = useState([]);
     const [fruits, setFruits] = useState([]);
     const [topping, setTopping] = useState(TOPPING_OPTIONS[0]);
@@ -510,9 +518,16 @@ async function playNewOrderSound() {
         title={label}
         onClose={onClose}
         footer={
-          <button onClick={() => onConfirm({ ingredients: ings, fruits, topping, calculation })} className="w-full py-3 rounded-xl bg-purple-800 text-white font-semibold flex items-center justify-center gap-2 hover:bg-purple-900 active:scale-[.98] transition-all">
-            Adicionar ao carrinho — {formatBRL(calculation.total)}
-          </button>
+          <div className="space-y-2">
+            <button onClick={() => onConfirm({ ingredients: ings, fruits, topping, calculation })} className="w-full py-3 rounded-xl bg-purple-800 text-white font-semibold flex items-center justify-center gap-2 hover:bg-purple-900 active:scale-[.98] transition-all">
+              <ShoppingCart size={16} /> Adicionar ao carrinho — {formatBRL(calculation.total)}
+            </button>
+            {onGoToCart && (
+              <button onClick={() => { onConfirm({ ingredients: ings, fruits, topping, calculation }); onGoToCart(); }} className="w-full py-3 rounded-xl border border-purple-800 text-purple-800 font-semibold flex items-center justify-center gap-2 hover:bg-purple-50 active:scale-[.98] transition-all">
+                Ir para o carrinho <ChevronRight size={16} />
+              </button>
+            )}
+          </div>
         }
       >
         <p className="text-sm text-purple-500 mb-3">Ingredientes: {ings.length}/{calculation.rule.ingredientLimit}</p>
@@ -617,35 +632,54 @@ async function playNewOrderSound() {
     ============================================================ */
 
   function MenuSection({ prices, onRequestAdd }) {
-    const [cat, setCat] = useState("acai");
-    const sizes = SIZE_OPTIONS[cat];
+    const [cat, setCat] = useState(null);
+    const sizes = cat ? SIZE_OPTIONS[cat] : [];
 
     return (
       <section id="cardapio" className="max-w-6xl mx-auto px-4 sm:px-6 py-16">
         <h2 className="text-3xl sm:text-4xl font-black text-purple-950 text-center" style={{ fontFamily: "'Fraunces', serif" }}>Nosso Cardápio</h2>
-        <p className="text-center text-purple-500 mt-2 mb-8">Escolha a base e o tamanho ideal para você</p>
+        <p className="text-center text-purple-500 mt-2 mb-8">Escolha a categoria e o tamanho ideal para você</p>
 
-        <div className="flex gap-2 overflow-x-auto pb-2 mb-8 justify-start sm:justify-center">
-          {CATEGORIES.map((c) => (
-            <Pill key={c} active={cat === c} onClick={() => setCat(c)}>{CATEGORY_LABEL[c]}</Pill>
-          ))}
-        </div>
-
-        {cat === "casadinho" && (
-          <div className="flex items-center gap-3 mb-6 justify-center text-sm text-purple-600">
-            <div className="flex h-5 w-24 rounded-full overflow-hidden border border-purple-200">
-              <div className="w-1/2 bg-purple-800" />
-              <div className="w-1/2 bg-amber-700" />
-            </div>
-            metade açaí, metade cupuaçu
+        {!cat ? (
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+            {CATEGORIES.map((c) => (
+              <button key={c} onClick={() => setCat(c)} className="rounded-2xl border-2 border-purple-100 bg-white p-5 sm:p-6 text-center transition-all hover:border-purple-400 hover:bg-purple-50/50 hover:shadow-md hover:shadow-purple-900/5 active:scale-[.98]">
+                <span className="block text-3xl sm:text-4xl mb-2.5">{CATEGORY_EMOJI[c]}</span>
+                <span className="block font-bold text-purple-950">{CATEGORY_LABEL[c]}</span>
+                <span className="mt-1 block text-xs font-medium text-purple-400">{SIZE_OPTIONS[c].length} opções</span>
+              </button>
+            ))}
           </div>
-        )}
+        ) : (
+          <>
+            <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+              <button onClick={() => setCat(null)} className="inline-flex items-center gap-1.5 text-sm font-semibold text-purple-700 hover:text-purple-950 transition-colors">
+                <ArrowLeft size={15} /> Categorias
+              </button>
+              <div className="flex gap-2 overflow-x-auto pb-1 justify-start sm:justify-center">
+                {CATEGORIES.map((c) => (
+                  <Pill key={c} active={cat === c} onClick={() => setCat(c)}>{CATEGORY_LABEL[c]}</Pill>
+                ))}
+              </div>
+            </div>
 
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {sizes.map((s) => (
-            <SizeCard key={s} category={cat} size={s} prices={prices} onAdd={(size) => onRequestAdd(cat, size)} />
-          ))}
-        </div>
+            {cat === "casadinho" && (
+              <div className="flex items-center gap-3 mb-6 justify-center text-sm text-purple-600">
+                <div className="flex h-5 w-24 rounded-full overflow-hidden border border-purple-200">
+                  <div className="w-1/2 bg-purple-800" />
+                  <div className="w-1/2 bg-amber-700" />
+                </div>
+                metade açaí, metade cupuaçu
+              </div>
+            )}
+
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {sizes.map((s) => (
+                <SizeCard key={s} category={cat} size={s} prices={prices} onAdd={(size) => onRequestAdd(cat, size)} />
+              ))}
+            </div>
+          </>
+        )}
       </section>
     );
   }
@@ -3390,6 +3424,7 @@ useEffect(() => {
           category={addModal.category} size={addModal.size} prices={prices} ingredients={ingredients} ingredientOrder={config.ingredient_order} fruitOrder={config.fruit_order}
           onClose={() => setAddModal(null)}
           onConfirm={(selection) => { addToCart({ category: addModal.category, size: addModal.size, ...selection }); setAddModal(null); }}
+          onGoToCart={() => setCartOpen(true)}
         />
       )}
 
