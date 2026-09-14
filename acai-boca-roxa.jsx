@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 
 import {
   ShoppingCart, Plus, Minus, X, Menu, Camera, MapPin, Clock,
   MessageCircle, Pencil, Trash2, Check, ChevronRight, ArrowLeft, Lock,
-  LogOut, ClipboardList, DollarSign, Leaf, Settings, RotateCcw, ArrowUp, ArrowDown
+  LogOut, ClipboardList, DollarSign, Leaf, Settings, RotateCcw, ArrowUp, ArrowDown, Info
 } from "lucide-react";
 
 import { supabase } from "./src/supabase.js";
@@ -172,10 +172,8 @@ async function playNewOrderSound() {
   ].map(([name, price]) => ({ id: `adicional-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`, name, price, free: false, type: "additional" }));
 
   const LAYER_LABELS = ["1ª camada", "2ª camada", "3ª camada"];
-  const LAYER_INGREDIENT_LIMIT = 2;
-  const LAYER_FLOW_STEPS = ["Camadas", "Ingredientes extras", "Frutas extras", "Cobertura", "Resumo"];
-  const LAYERED_CUP_CATEGORIES = ["acai", "cupuacu", "casadinho"];
-  const isLayeredCup = (category, size) => size === 700 && LAYERED_CUP_CATEGORIES.includes(category);
+  const CUP_700_INGREDIENT_LIMIT = 6;
+  const is700ml = (category, size) => size === 700 && ["acai", "cupuacu", "casadinho"].includes(category);
 
   // ⚠️ PREÇOS DE EXEMPLO — o administrador pode alterar tudo isso pelo painel.
   const DEFAULT_PRICES = {
@@ -317,18 +315,6 @@ async function playNewOrderSound() {
       topping,
     };
   };
-  const calculateLayeredPrice = ({ category, size, layers, extras, fruits, topping }, prices, options = {}) => {
-    const flatLayers = layers.flat();
-    const base = calculateProductPrice({ category, size, ingredients: flatLayers, fruits, topping }, prices, options);
-    const extrasCount = Math.max(0, flatLayers.length - base.rule.ingredientLimit) + extras.length;
-    const extrasPrice = extrasCount * (options.excessPrice ?? DEFAULT_EXCESS_PRICE);
-    return {
-      ...base,
-      ingredientExtraCount: extrasCount,
-      ingredientExcessPrice: extrasPrice,
-      total: base.total + extrasPrice,
-    };
-  };
 
   function itemLabel(category, size) {
     if (category === "tigela") return `Tigela ${size} ml`;
@@ -353,7 +339,7 @@ async function playNewOrderSound() {
   /* ============================================================
     IDENTIFICAÇÃO DE INGREDIENTES/FRUTAS EXTRAS NA COMANDA
     Usa a mesma regra (rule.ingredientLimit / rule.fruitLimit) que já
-    define os extras no resumo do pedido (ver step 3 do BuilderSection).
+    define os extras no resumo do pedido.
     Pedidos antigos sem essa informação continuam exibindo os itens
     normalmente, sem marcação de extra.
     ============================================================ */
@@ -411,6 +397,10 @@ async function playNewOrderSound() {
         if (item.ingredients?.length) {
           lines.push("Ingredientes:");
           getIngredientDisplayList(item).forEach((label) => lines.push(`- ${label}`));
+        }
+        if (item.extras?.length) {
+          lines.push("Ingredientes extras — copinho 100 ml:");
+          item.extras.forEach((x) => lines.push(`- ${x.name}`));
         }
         if (item.fruits?.length) {
           lines.push("Frutas (copinho separado de 100 ml quando aplicável):");
@@ -474,7 +464,7 @@ async function playNewOrderSound() {
     );
   }
 
-  function IngredientGrid({ ingredients, selected, onToggle, showPrices = true, includedLimit = 0, extraLabel = "Ingrediente extra", getExtraPrice, fullNames = false }) {
+  function IngredientGrid({ ingredients, selected, onToggle, showPrices = true, includedLimit = 0, extraLabel = "Ingrediente extra", getExtraPrice, fullNames = false, activeLabel }) {
     const isSel = (id) => selected.some((s) => s.id === id);
     return (
       <div className={`grid gap-2.5 ${fullNames ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-2 sm:grid-cols-3"}`}>
@@ -489,14 +479,14 @@ async function playNewOrderSound() {
               }`}
             >
               <div className={`flex justify-between gap-1 ${fullNames ? "items-start" : "items-center"}`}>
-                <span className={`font-medium text-purple-950 ${fullNames ? "break-words leading-snug" : "truncate"}`}>{ing.name}</span>
+                <span className="font-medium text-purple-950 break-words whitespace-normal leading-snug">{ing.name}</span>
                 {active && <Check size={15} className="text-purple-700 shrink-0" />}
               </div>
-              <span className={`text-xs ${!showPrices && !active ? "text-emerald-600" : active && !showPrices ? (selected.findIndex((item) => item.id === ing.id) >= includedLimit ? "text-pink-600" : "text-emerald-600") : ing.free ? "text-emerald-600" : "text-pink-600"}`}>
+              <span className={`text-xs break-words whitespace-normal leading-snug ${!showPrices && !active ? "text-emerald-600" : active && !showPrices ? (selected.findIndex((item) => item.id === ing.id) >= includedLimit ? "text-pink-600" : "text-emerald-600") : ing.free ? "text-emerald-600" : "text-pink-600"}`}>
                 {!showPrices && active
                   ? selected.findIndex((item) => item.id === ing.id) >= includedLimit
                     ? `${extraLabel} +${formatBRL(getExtraPrice ? getExtraPrice(ing) : PRODUCT_RULES.excessPrice)}`
-                    : "Incluído"
+                    : activeLabel ? activeLabel(selected.findIndex((item) => item.id === ing.id)) : "Incluído"
                   : showPrices ? ing.free ? "Grátis" : `+ ${formatBRL(ing.price)}` : "Selecionar"}
               </span>
             </button>
@@ -528,11 +518,11 @@ async function playNewOrderSound() {
     );
   }
 
-  function Modal({ title, onClose, children, footer }) {
+  function Modal({ title, onClose, children, footer, wide = false }) {
     return (
       <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
         <div className="absolute inset-0 bg-purple-950/50 backdrop-blur-[2px]" onClick={onClose} />
-        <div className="relative bg-white w-full sm:max-w-lg sm:rounded-3xl rounded-t-3xl max-h-[88vh] flex flex-col shadow-2xl animate-[slideUp_.25s_ease-out]">
+        <div className={`relative bg-white w-full ${wide ? "sm:max-w-2xl" : "sm:max-w-lg"} sm:rounded-3xl rounded-t-3xl max-h-[88vh] flex flex-col shadow-2xl animate-[slideUp_.25s_ease-out]`}>
           <div className="flex items-center justify-between px-5 py-4 border-b border-purple-50">
             <h3 className="font-bold text-lg text-purple-950" style={{ fontFamily: "'Fraunces', serif" }}>{title}</h3>
             <button onClick={onClose} className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-purple-50 text-purple-700">
@@ -551,213 +541,151 @@ async function playNewOrderSound() {
     MODAL: escolher ingredientes ao adicionar produto do cardápio
     ============================================================ */
 
-  function LayerCupVisual({ layers }) {
-    const layerStyles = [
-      { label: "1ª camada", bg: "bg-purple-700" },
-      { label: "2ª camada", bg: "bg-purple-400" },
-      { label: "3ª camada", bg: "bg-purple-200" },
+  function Cup700Visual({ ings }) {
+    const layers = [
+      { label: "1ª camada", ings: ings.slice(0, 2), bg: "bg-purple-700", textLight: true },
+      { label: "2ª camada", ings: ings.slice(2, 4), bg: "bg-purple-400", textLight: true },
+      { label: "3ª camada", ings: ings.slice(4, 6), bg: "bg-purple-200", textLight: false },
     ];
     return (
       <div className="flex flex-col items-center select-none">
-        <div className="w-44 h-7 rounded-t-2xl border-2 border-b-0 border-purple-300 bg-white relative">
+        <div className="w-48 h-7 rounded-t-2xl border-2 border-b-0 border-purple-300 bg-white relative">
           <div className="absolute inset-x-3 top-2.5 h-1.5 rounded-full bg-purple-100" />
         </div>
-        <div className="w-44 overflow-hidden rounded-b-2xl rounded-t-md border-x-2 border-b-2 border-purple-300 shadow-lg shadow-purple-900/10">
-          {layerStyles.map(({ label, bg }, i) => {
-            const ings = layers[i] || [];
-            return (
-              <div key={label} className={`${bg} px-3 py-2 min-h-[58px] border-t border-white/30`}>
-                <p className="text-[10px] font-bold uppercase tracking-widest text-white/90 flex items-center justify-between">
-                  {label}
-                  <span className={`w-2 h-2 rounded-full ${ings.length ? "bg-emerald-300" : "bg-white/40"}`} />
-                </p>
-                <p className={`mt-1 text-[11px] font-semibold leading-tight ${bg === "bg-purple-200" ? "text-purple-900/80" : "text-white/95"}`}>
-                  {ings.length ? `${ings.length}/${LAYER_INGREDIENT_LIMIT} ingrediente(s)` : "Camada vazia"}
-                </p>
-              </div>
-            );
-          })}
+        <div className="w-48 overflow-hidden rounded-b-2xl rounded-t-md border-x-2 border-b-2 border-purple-300 shadow-lg shadow-purple-900/10">
+          {layers.map(({ label, ings: layerIngs, bg, textLight }) => (
+            <div key={label} className={`${bg} px-2.5 py-2 min-h-[56px] border-t border-white/30`}>
+              <p className={`text-[10px] font-bold uppercase tracking-widest flex items-center justify-between gap-1 ${textLight ? "text-white/85" : "text-purple-900/70"}`}>
+                <span>{label}</span>
+                <span className={`w-2 h-2 rounded-full shrink-0 ${layerIngs.length ? "bg-emerald-300" : "bg-white/40"}`} />
+              </p>
+              <p className={`mt-1 text-[11px] font-semibold leading-snug break-words whitespace-normal ${textLight ? "text-white/95" : "text-purple-900/80"}`}>
+                {layerIngs.length ? layerIngs.map((x) => x.name).join(" + ") : "Aguardando ingredientes"}
+              </p>
+            </div>
+          ))}
         </div>
-        <div className="w-28 h-2.5 rounded-b-xl border-2 border-t-0 border-purple-300 bg-purple-50" />
+        <div className="w-32 h-2.5 rounded-b-xl border-2 border-t-0 border-purple-300 bg-purple-50" />
       </div>
     );
   }
 
-  function LayerCupView({ layers, onToggleLayer, availableIngredients, extras, onToggleExtra, fruits, onToggleFruit, availableFruits, fruitOpts, excess, topping, setTopping, calculation, flowStep, onFlowStepChange, onExit }) {
-    const flowProgress = flowStep <= 2 ? 0 : flowStep - 2;
-    const showBack = flowStep > 0 || !!onExit;
-    const isSummary = flowStep === 6;
-
-    const nav = !isSummary && (
-      <div className="flex items-center justify-between mt-6 gap-3">
-        {showBack ? (
-          <button onClick={() => { if (flowStep > 0) onFlowStepChange(flowStep - 1); else onExit(); }} className="flex items-center gap-1 text-sm text-purple-500 hover:text-purple-800 py-2">
-            <ArrowLeft size={14} /> voltar
-          </button>
-        ) : <span />}
-        <button onClick={() => onFlowStepChange(flowStep + 1)} className="bg-purple-800 text-white font-semibold px-7 py-3 rounded-full hover:bg-purple-900 active:scale-[.98] transition-all flex items-center gap-1.5">
-          Continuar <ChevronRight size={16} />
-        </button>
-      </div>
-    );
+  function Cup700View({ limit, ings, onToggleIng, availableIngredients, extras, onToggleExtra, fruits, onToggleFruit, availableFruits, fruitOpts, excess, topping, setTopping, calculation }) {
+    const isFull = ings.length >= limit;
+    const layerBars = ["bg-purple-700", "bg-purple-400", "bg-purple-200"];
 
     return (
       <div>
         <div className="mb-4">
-          <p className="text-xl font-black text-purple-950">🥤 Monte seu copo de 700 ml</p>
-          <p className="text-sm text-purple-500 mt-0.5">Você vai montar 3 camadas de açaí. Em cada camada, escolha até 2 ingredientes.</p>
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xl font-black text-purple-950">🥤 Copo de 700 ml</p>
+            <span className="shrink-0 text-sm font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-full">{ings.length} de {limit} ingredientes</span>
+          </div>
+          <p className="text-sm text-purple-500 mt-1.5 leading-relaxed">Escolha até {limit} ingredientes. A cada 2 ingredientes escolhidos, eles formam uma camada do seu copo.</p>
         </div>
 
-        <div className="flex items-center justify-center gap-1.5 sm:gap-2 mb-5 flex-wrap">
-          {LAYER_FLOW_STEPS.map((label, i) => (
-            <React.Fragment key={label}>
-              <span className={`flex items-center gap-1.5 text-xs sm:text-sm font-semibold ${i < flowProgress ? "text-emerald-600" : i === flowProgress ? "text-purple-900" : "text-purple-300"}`}>
-                <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] ${i < flowProgress ? "bg-emerald-500 text-white" : i === flowProgress ? "bg-purple-800 text-white" : "bg-purple-100 text-purple-400"}`}>{i + 1}</span>
-                <span>{label}</span>
-              </span>
-              {i < LAYER_FLOW_STEPS.length - 1 && <div className={`h-px w-4 sm:w-8 ${i < flowProgress ? "bg-emerald-400" : "bg-purple-200"}`} />}
-            </React.Fragment>
-          ))}
-        </div>
-
-        <div className="flex items-center justify-center mb-5">
-          <div className="rounded-2xl border border-purple-100 bg-purple-50/60 p-3 flex items-center gap-4 overflow-hidden">
-            <div className="scale-90 origin-center shrink-0"><LayerCupVisual layers={layers} /></div>
-            <div className="text-xs space-y-1 text-purple-700 min-w-0">
-              {LAYER_LABELS.map((label, i) => (
-                <p key={label}>
-                  <span className="font-bold text-purple-900">{label}:</span>{" "}
-                  {layers[i]?.length ? layers[i].map((x) => x.name).join(", ") : "vazio"}
-                </p>
-              ))}
-            </div>
+        <div className="flex flex-col items-center mb-6">
+          <Cup700Visual ings={ings} />
+          <div className="mt-3 flex items-center gap-4 text-xs font-semibold text-purple-600">
+            <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-purple-700" /> 1ª camada</span>
+            <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-purple-400" /> 2ª camada</span>
+            <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-purple-200 border border-purple-400" /> 3ª camada</span>
           </div>
         </div>
 
-        {flowStep <= 2 && (
-          <div>
-            <p className="text-2xl font-black text-purple-950">🥤 {LAYER_LABELS[flowStep]}</p>
-            <p className="text-sm text-purple-500 mt-1 mb-4">Seu açaí + até 2 ingredientes — ficam dentro do copo de 700 ml.</p>
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-sm font-semibold text-purple-800">Escolha os ingredientes</p>
-              <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${layers[flowStep].length >= LAYER_INGREDIENT_LIMIT ? "bg-emerald-50 text-emerald-700" : "bg-purple-100 text-purple-700"}`}>
-                {layers[flowStep].length} de {LAYER_INGREDIENT_LIMIT}
-              </span>
-            </div>
-            <IngredientGrid ingredients={availableIngredients} selected={layers[flowStep]} onToggle={(ing) => onToggleLayer(flowStep, ing)} showPrices={false} includedLimit={LAYER_INGREDIENT_LIMIT} extraLabel="Ingrediente extra" fullNames />
-            {layers[flowStep].length >= LAYER_INGREDIENT_LIMIT && <p className="text-xs text-emerald-700 mt-2">Máximo de 2 ingredientes por camada atingido.</p>}
-            {nav}
-          </div>
-        )}
+        <div className="rounded-2xl border border-purple-100 p-4">
+          <p className="font-black text-purple-950">🥤 Ingredientes</p>
+          <p className="text-xs text-purple-500 mt-0.5 mb-3">A ordem das escolhas define as camadas: 1º e 2º → 1ª camada, 3º e 4º → 2ª camada, 5º e 6º → 3ª camada.</p>
+          {isFull && (
+            <p className="mb-3 flex items-center gap-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold px-3 py-2">
+              <Info size={14} className="shrink-0" /> Você já escolheu os {limit} ingredientes permitidos.
+            </p>
+          )}
+          <IngredientGrid ingredients={availableIngredients} selected={ings} onToggle={onToggleIng} showPrices={false} includedLimit={limit} extraLabel="Ingrediente extra" getExtraPrice={() => excess} fullNames activeLabel={(index) => `Camada ${Math.floor(index / 2) + 1}`} />
+        </div>
 
-        {flowStep === 3 && (
-          <div>
-            <p className="text-2xl font-black text-purple-950">🥤 Ingredientes extras</p>
-            <div className="mt-2 mb-4 rounded-xl bg-purple-50 border border-purple-100 p-3">
-              <p className="text-sm font-bold text-purple-900">Copinho separado de 100 ml</p>
-              <p className="text-xs text-purple-500 mt-0.5">Os ingredientes extras vão em um copinho separado, não dentro do copo de 700 ml.</p>
-            </div>
-            <p className="text-sm font-semibold text-purple-800 mb-2">Cada extra soma +{formatBRL(excess)}</p>
-            <IngredientGrid ingredients={availableIngredients} selected={extras} onToggle={onToggleExtra} showPrices={false} includedLimit={0} extraLabel="Ingrediente extra" getExtraPrice={() => excess} fullNames />
-            {nav}
-          </div>
-        )}
-
-        {flowStep === 4 && (
-          <div>
-            <p className="text-2xl font-black text-purple-950">🍓 Frutas extras</p>
-            <div className="mt-2 mb-4 rounded-xl bg-purple-50 border border-purple-100 p-3">
-              <p className="text-sm font-bold text-purple-900">Copinho separado de 100 ml</p>
-              <p className="text-xs text-purple-500 mt-0.5">As frutas extras vão em um copinho separado — cada uma com seu próprio preço.</p>
-            </div>
-            <IngredientGrid ingredients={availableFruits} selected={fruits} onToggle={onToggleFruit} showPrices={false} includedLimit={0} extraLabel="Fruta extra" getExtraPrice={(item) => { const fruit = (fruitOpts || []).find((f) => f.id === item.id); return fruit?.price ?? excess; }} fullNames />
-            {nav}
-          </div>
-        )}
-
-        {flowStep === 5 && (
-          <div>
-            <p className="text-2xl font-black text-purple-950">🍫 Cobertura</p>
-            <p className="text-sm text-purple-500 mt-1 mb-4">Escolha uma cobertura incluída para o seu copo.</p>
-            <div className="grid grid-cols-2 gap-2">
-              {TOPPING_OPTIONS.map((option) => (
-                <button key={option.id} onClick={() => setTopping(option)} className={`rounded-xl border px-3 py-3 text-left text-sm font-semibold ${topping?.id === option.id ? "border-purple-700 bg-purple-50 text-purple-900" : "border-purple-100 text-purple-800"}`}>
-                  {option.name}
-                  {topping?.id === option.id && <Check size={14} className="inline ml-2 text-purple-700" />}
-                </button>
-              ))}
-            </div>
-            {nav}
-          </div>
-        )}
-
-        {isSummary && (
-          <div>
-            <p className="text-2xl font-black text-purple-950">🥤 Seu copo de 700 ml</p>
-            <div className="mt-3 space-y-3 text-sm">
-              {LAYER_LABELS.map((label, i) => (
-                <div key={label} className="rounded-xl border border-purple-100 bg-purple-50/60 p-3">
-                  <p className="font-semibold text-purple-950">{label}</p>
-                  <p className="text-purple-700 mt-0.5">{["Açaí", ...layers[i].map((x) => x.name)].join(" + ")}</p>
+        <div className="mt-6 rounded-2xl border border-purple-100 p-4">
+          <p className="text-lg font-bold text-purple-950">Como ficará seu copo</p>
+          <div className="mt-3 space-y-3">
+            {LAYER_LABELS.map((label, i) => {
+              const layerIngs = ings.slice(i * 2, i * 2 + 2);
+              return (
+                <div key={label} className="flex items-center gap-3">
+                  <span className={`w-3 h-9 rounded-full shrink-0 ${layerBars[i]} border border-purple-300`} />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-purple-950">{label}</p>
+                    <p className={`text-sm break-words whitespace-normal leading-snug ${layerIngs.length ? "text-purple-700" : "text-purple-400"}`}>
+                      {layerIngs.length ? layerIngs.map((x) => x.name).join(" + ") : "Aguardando ingredientes"}
+                    </p>
+                  </div>
                 </div>
-              ))}
-              <div className="rounded-xl border border-purple-100 bg-purple-50/60 p-3">
-                <p className="font-semibold text-purple-950">🥤 Copinho separado de 100 ml — Ingredientes extras</p>
-                <p className="text-purple-700 mt-0.5">{extras.length ? extras.map((x) => x.name).join(", ") : "Nenhum"}{extras.length > 0 ? ` · +${formatBRL(extras.length * excess)}` : ""}</p>
-              </div>
-              <div className="rounded-xl border border-purple-100 bg-purple-50/60 p-3">
-                <p className="font-semibold text-purple-950">🍓 Copinho separado de 100 ml — Frutas extras</p>
-                <p className="text-purple-700 mt-0.5">{fruits.length ? fruits.map((x) => x.name).join(", ") : "Nenhum"}</p>
-              </div>
-              <div className="rounded-xl border border-purple-100 bg-purple-50/60 p-3">
-                <p className="font-semibold text-purple-950">🍫 Cobertura</p>
-                <p className="text-purple-700 mt-0.5">{topping?.name || "—"}</p>
-              </div>
-              <div className="flex items-center justify-between rounded-xl bg-purple-900 text-white p-4">
-                <p className="font-bold">Total</p>
-                <p className="font-black text-lg">{formatBRL(calculation.total)}</p>
-              </div>
-              <button onClick={() => onFlowStepChange(5)} className="flex items-center gap-1 text-sm text-purple-500 hover:text-purple-800">
-                <ArrowLeft size={14} /> voltar para a cobertura
-              </button>
-            </div>
+              );
+            })}
           </div>
-        )}
+        </div>
+
+        <div className="mt-6 rounded-2xl border border-purple-100 p-4">
+          <p className="text-lg font-bold text-purple-950">🥤 Ingredientes extras</p>
+          <p className="text-sm font-semibold text-purple-800 mt-1">Os ingredientes extras vão em um copinho separado de 100 ml.</p>
+          <p className="text-xs text-purple-500 mt-0.5 mb-3">Cada extra soma +{formatBRL(excess)}.</p>
+          <IngredientGrid ingredients={availableIngredients} selected={extras} onToggle={onToggleExtra} showPrices={false} includedLimit={0} extraLabel="Ingrediente extra" getExtraPrice={() => excess} fullNames />
+        </div>
+
+        <div className="mt-6 rounded-2xl border border-purple-100 p-4">
+          <p className="text-lg font-bold text-purple-950">🍓 Frutas extras</p>
+          <p className="text-sm font-semibold text-purple-800 mt-1">As frutas extras vão em um copinho separado de 100 ml.</p>
+          <p className="text-xs text-purple-500 mt-0.5 mb-3">Cada fruta custa o preço definido no cardápio.</p>
+          <IngredientGrid ingredients={availableFruits} selected={fruits} onToggle={onToggleFruit} showPrices={false} includedLimit={0} extraLabel="Fruta extra" getExtraPrice={(item) => { const fruit = (fruitOpts || []).find((f) => f.id === item.id); return fruit?.price ?? excess; }} fullNames />
+        </div>
+
+        <div className="mt-6">
+          <p className="text-lg font-bold text-purple-950 mb-3">🍫 Cobertura</p>
+          <div className="grid grid-cols-2 gap-2">
+            {TOPPING_OPTIONS.map((option) => (
+              <button key={option.id} onClick={() => setTopping(option)} className={`rounded-xl border px-3 py-3 text-left text-sm font-semibold ${topping?.id === option.id ? "border-purple-700 bg-purple-50 text-purple-900" : "border-purple-100 text-purple-800"}`}>
+                {option.name}
+                {topping?.id === option.id && <Check size={14} className="inline ml-2 text-purple-700" />}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="mt-6 rounded-2xl bg-purple-900 text-white p-4 flex items-center justify-between">
+          <span className="font-bold">Preço total</span>
+          <span className="font-black text-lg">{formatBRL(calculation.total)}</span>
+        </div>
       </div>
     );
   }
 
-  function AddProductModal({ category, size, prices, ingredients, ingredientOrder, fruitOrder, onClose, onConfirm, onGoToCart, fruitOptions, excessPrice }) {
-    const [ings, setIngs] = useState([]);
-    const [fruits, setFruits] = useState([]);
-    const [layers, setLayers] = useState([[],[],[]]);
-    const [extras, setExtras] = useState([]);
-    const [topping, setTopping] = useState(TOPPING_OPTIONS[0]);
-    const [flowStep, setFlowStep] = useState(0);
+  function AddProductModal({ category, size, prices, ingredients, ingredientOrder, fruitOrder, onClose, onConfirm, onGoToCart, fruitOptions, excessPrice, initial = null }) {
+    const [ings, setIngs] = useState(initial?.ingredients || []);
+    const [fruits, setFruits] = useState(initial?.fruits || []);
+    const [extras, setExtras] = useState(initial?.extras || []);
+    const [topping, setTopping] = useState(initial?.topping || TOPPING_OPTIONS[0]);
     const fruitOpts = fruitOptions || DEFAULT_FRUIT_OPTIONS;
     const excess = excessPrice ?? DEFAULT_EXCESS_PRICE;
-    const isLayered = isLayeredCup(category, size);
+    const is700 = is700ml(category, size);
     const availableIngredients = sortBySavedOrder([...normalIngredients(ingredients), ...ADDITIONAL_OPTIONS.filter((option) => !ingredients.some((ing) => ingredientNameKey(ing) === ingredientNameKey(option)))], ingredientOrder);
     const availableFruits = sortBySavedOrder(fruitOpts, fruitOrder);
     const toggle = (ing) => setIngs((prev) => (prev.some((i) => i.id === ing.id) ? prev.filter((i) => i.id !== ing.id) : [...prev, ing]));
     const toggleFruit = (fruit) => setFruits((prev) => (prev.some((i) => i.id === fruit.id) ? prev.filter((i) => i.id !== fruit.id) : [...prev, fruit]));
     const toggleExtra = (ing) => setExtras((prev) => (prev.some((i) => i.id === ing.id) ? prev.filter((i) => i.id !== ing.id) : [...prev, ing]));
-    const toggleLayer = (layerIndex, ing) => setLayers((prev) => prev.map((arr, i) => { if (i !== layerIndex) return arr; if (arr.some((x) => x.id === ing.id)) return arr.filter((x) => x.id !== ing.id); if (arr.length >= LAYER_INGREDIENT_LIMIT) return arr; return [...arr, ing]; }));
-    const flatLayers = layers.flat();
-    const layersPayload = LAYER_LABELS.map((name, i) => ({ name, ingredients: layers[i] }));
-    const calculation = isLayered
-      ? calculateLayeredPrice({ category, size, layers, extras, fruits, topping }, prices, { fruitOptions: fruitOpts, excessPrice: excess })
+    const toggleIng700 = (ing) => setIngs((prev) => (prev.some((i) => i.id === ing.id) ? prev.filter((i) => i.id !== ing.id) : prev.length >= CUP_700_INGREDIENT_LIMIT ? prev : [...prev, ing]));
+    const calculation = is700
+      ? calculateProductPrice({ category, size, ingredients: [...ings, ...extras], fruits, topping }, prices, { fruitOptions: fruitOpts, excessPrice: excess })
       : calculateProductPrice({ category, size, ingredients: ings, fruits, topping }, prices, { fruitOptions: fruitOpts, excessPrice: excess });
     const label = itemLabel(category, size);
-    const buildSelection = () => isLayered
-      ? { layers: layersPayload, ingredients: flatLayers, extras, fruits, topping, calculation }
+    const buildSelection = () => is700
+      ? { ingredients: ings, extras, fruits, topping, calculation }
       : { ingredients: ings, fruits, topping, calculation };
 
     return (
       <Modal
         title={label}
         onClose={onClose}
-        footer={(!isLayered || flowStep === 6) ? (
+        wide={is700}
+        footer={(
           <div className="space-y-2">
             <button onClick={() => onConfirm(buildSelection())} className="w-full py-3 rounded-xl bg-purple-800 text-white font-semibold flex items-center justify-center gap-2 hover:bg-purple-900 active:scale-[.98] transition-all">
               <ShoppingCart size={16} /> Adicionar ao carrinho — {formatBRL(calculation.total)}
@@ -768,12 +696,13 @@ async function playNewOrderSound() {
               </button>
             )}
           </div>
-        ) : null}
+        )}
       >
-        {isLayered ? (
-          <LayerCupView
-            layers={layers}
-            onToggleLayer={toggleLayer}
+        {is700 ? (
+          <Cup700View
+            limit={CUP_700_INGREDIENT_LIMIT}
+            ings={ings}
+            onToggleIng={toggleIng700}
             availableIngredients={availableIngredients}
             extras={extras}
             onToggleExtra={toggleExtra}
@@ -785,8 +714,6 @@ async function playNewOrderSound() {
             topping={topping}
             setTopping={setTopping}
             calculation={calculation}
-            flowStep={flowStep}
-            onFlowStepChange={setFlowStep}
           />
         ) : (
           <>
@@ -817,7 +744,7 @@ async function playNewOrderSound() {
   function Header({ cartCount, onCartClick, onNav }) {
     const [open, setOpen] = useState(false);
     const links = [
-      ["inicio", "Início"], ["cardapio", "Cardápio"], ["monte", "Monte seu Açaí"], ["acompanhar", "Acompanhar pedido"], ["sobre", "Sobre nós"], ["contato", "Contato"],
+      ["inicio", "Início"], ["cardapio", "Cardápio"], ["acompanhar", "Acompanhar pedido"], ["sobre", "Sobre nós"], ["contato", "Contato"],
     ];
     return (
       <header className="sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-purple-100">
@@ -878,7 +805,6 @@ async function playNewOrderSound() {
             </div>
             <div className="mt-8 flex flex-col sm:flex-row gap-3 justify-center md:justify-start">
               <button onClick={() => onNav("cardapio")} className="bg-white text-purple-900 font-bold px-7 py-3.5 rounded-full hover:bg-purple-50 active:scale-95 transition-all">Ver cardápio</button>
-              <button onClick={() => onNav("monte")} className="border border-purple-300/50 text-white font-semibold px-7 py-3.5 rounded-full hover:bg-white/10 active:scale-95 transition-all">Monte seu açaí</button>
             </div>
           </div>
           <div className="flex justify-center md:justify-end">
@@ -990,260 +916,6 @@ async function playNewOrderSound() {
   }
 
   /* ============================================================
-    MONTE SEU AÇAÍ
-    ============================================================ */
-
-  function BuilderSection({ prices, ingredients, ingredientOrder, fruitOrder, addToCart, onOpenCart, prefill, clearPrefill, fruitOptions, excessPrice }) {
-    const [step, setStep] = useState(0);
-    const [base, setBase] = useState(null);
-    const [size, setSize] = useState(null);
-    const [ings, setIngs] = useState([]);
-    const [fruits, setFruits] = useState([]);
-    const [layers, setLayers] = useState([[],[],[]]);
-    const [extras, setExtras] = useState([]);
-    const [topping, setTopping] = useState(TOPPING_OPTIONS[0]);
-    const [flowStep, setFlowStep] = useState(0);
-    const [showSummaryOptions, setShowSummaryOptions] = useState(false);
-
-    useEffect(() => {
-      if (prefill) {
-        setBase(prefill.category);
-        setSize(prefill.size);
-        setIngs(prefill.ingredients || []);
-        setFruits(prefill.fruits || []);
-        if (Array.isArray(prefill.layers) && prefill.layers.length === 3) {
-          setLayers(prefill.layers.map((layer) => layer?.ingredients || []));
-        }
-        setExtras(prefill.extras || []);
-        setTopping(prefill.topping || null);
-        setFlowStep(0);
-        setStep(2);
-        clearPrefill();
-      }
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [prefill]);
-
-    const sizes = base ? SIZE_OPTIONS[base] : [];
-    const fruitOpts = fruitOptions || DEFAULT_FRUIT_OPTIONS;
-    const excess = excessPrice ?? DEFAULT_EXCESS_PRICE;
-    const isLayered = base && size ? isLayeredCup(base, size) : false;
-    const availableIngredients = sortBySavedOrder(ingredients.length > 0 ? [...normalIngredients(ingredients), ...ADDITIONAL_OPTIONS.filter((option) => !ingredients.some((ing) => ingredientNameKey(ing) === ingredientNameKey(option)))] : ADDITIONAL_OPTIONS, ingredientOrder);
-    const availableFruits = sortBySavedOrder(fruitOpts, fruitOrder);
-    const flatLayers = layers.flat();
-    const layersPayload = LAYER_LABELS.map((name, i) => ({ name, ingredients: layers[i] }));
-    const calculation = base && size ? (isLayered
-      ? calculateLayeredPrice({ category: base, size, layers, extras, fruits, topping }, prices, { fruitOptions: fruitOpts, excessPrice: excess })
-      : calculateProductPrice({ category: base, size, ingredients: ings, fruits, topping }, prices, { fruitOptions: fruitOpts, excessPrice: excess })) : null;
-
-    const toggle = (ing) => setIngs((prev) => (prev.some((i) => i.id === ing.id) ? prev.filter((i) => i.id !== ing.id) : [...prev, ing]));
-    const toggleFruit = (fruit) => setFruits((prev) => (prev.some((i) => i.id === fruit.id) ? prev.filter((i) => i.id !== fruit.id) : [...prev, fruit]));
-    const toggleLayer = (layerIndex, ing) => setLayers((prev) => prev.map((arr, i) => { if (i !== layerIndex) return arr; if (arr.some((x) => x.id === ing.id)) return arr.filter((x) => x.id !== ing.id); if (arr.length >= LAYER_INGREDIENT_LIMIT) return arr; return [...arr, ing]; }));
-    const toggleExtra = (ing) => setExtras((prev) => (prev.some((i) => i.id === ing.id) ? prev.filter((i) => i.id !== ing.id) : [...prev, ing]));
-    const reset = () => { setFlowStep(0); setStep(0); setBase(null); setSize(null); setIngs([]); setFruits([]); setLayers([[],[],[]]); setExtras([]); setTopping(TOPPING_OPTIONS[0]); };
-    const buildSelection = () => isLayered
-      ? { category: base, size, layers: layersPayload, ingredients: flatLayers, extras, fruits, topping, calculation }
-      : { category: base, size, ingredients: ings, fruits, topping, calculation };
-    const handleAdd = () => { addToCart(buildSelection()); reset(); };
-    const steps = ["Base", "Tamanho", "Ingredientes", "Resumo"];
-
-    return (
-      <section id="monte" className="bg-purple-50/60 py-16">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6">
-          <h2 className="text-3xl sm:text-4xl font-black text-purple-950 text-center" style={{ fontFamily: "'Fraunces', serif" }}>Monte seu Açaí</h2>
-          <p className="text-center text-purple-500 mt-2 mb-8">Em poucos passos, do seu jeito</p>
-
-          <div className="flex items-center justify-center gap-2 mb-8">
-            {steps.map((label, i) => (
-              <React.Fragment key={label}>
-                <div className={`flex items-center gap-1.5 text-xs sm:text-sm font-semibold ${i <= step ? "text-purple-900" : "text-purple-300"}`}>
-                  <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] ${i <= step ? "bg-purple-800 text-white" : "bg-purple-100"}`}>{i + 1}</span>
-                  <span className="hidden sm:inline">{label}</span>
-                </div>
-                {i < steps.length - 1 && <div className={`w-6 sm:w-10 h-px ${i < step ? "bg-purple-700" : "bg-purple-200"}`} />}
-              </React.Fragment>
-            ))}
-          </div>
-
-          <div className="bg-white rounded-3xl shadow-sm border border-purple-100 p-5 sm:p-8">
-            {step === 0 && (
-              <div>
-                <p className="font-semibold text-purple-950 mb-4">Escolha a base</p>
-                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-                  {CATEGORIES.map((c) => (
-                    <button key={c} onClick={() => { setBase(c); setSize(null); setStep(1); }} className={`rounded-2xl border-2 p-5 text-center font-semibold transition-all ${base === c ? "border-purple-800 bg-purple-50" : "border-purple-100 hover:border-purple-300"}`}>
-                      {CATEGORY_LABEL[c]}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {step === 1 && (
-              <div>
-                <p className="font-semibold text-purple-950 mb-4">Escolha o tamanho — {CATEGORY_LABEL[base]}</p>
-                <div className="grid grid-cols-3 sm:grid-cols-5 gap-2.5">
-                  {sizes.map((s) => (
-                    <button key={s} onClick={() => { setSize(s); setStep(2); }} className={`rounded-xl border-2 py-3 text-sm font-semibold transition-all ${size === s ? "border-purple-800 bg-purple-50 text-purple-900" : "border-purple-100 hover:border-purple-300 text-purple-800"}`}>
-                      {base === "acai" || base === "cupuacu" || base === "casadinho" ? `${s} ml` : itemLabel(base, s)}
-                    </button>
-                  ))}
-                </div>
-                <button onClick={() => setStep(0)} className="mt-5 text-sm text-purple-500 flex items-center gap-1 hover:text-purple-800"><ArrowLeft size={14} /> voltar</button>
-              </div>
-            )}
-
-            {step === 2 && (
-              <div>
-                {isLayered ? (
-                  <LayerCupView
-                    layers={layers}
-                    onToggleLayer={toggleLayer}
-                    availableIngredients={availableIngredients}
-                    extras={extras}
-                    onToggleExtra={toggleExtra}
-                    fruits={fruits}
-                    onToggleFruit={toggleFruit}
-                    availableFruits={availableFruits}
-                    fruitOpts={fruitOpts}
-                    excess={excess}
-                    topping={topping}
-                    setTopping={setTopping}
-                    calculation={calculation}
-                    flowStep={flowStep}
-                    onFlowStepChange={setFlowStep}
-                    onExit={() => setStep(1)}
-                  />
-                ) : (
-                  <>
-                    <p className="font-semibold text-purple-950 mb-4">Ingredientes: {ings.length}/{calculation?.rule.ingredientLimit || 0}</p>
-                    <IngredientGrid ingredients={availableIngredients} selected={ings} onToggle={toggle} showPrices={false} includedLimit={calculation?.rule.ingredientLimit || 0} getExtraPrice={() => excess} />
-                    <p className="text-sm font-semibold text-purple-800 mt-5 mb-2">Frutas</p>
-                    <p className="text-xs text-purple-500 mb-2">{calculation?.rule.fruitLimit ? `Frutas: ${fruits.length}/${calculation.rule.fruitLimit}` : "Frutas: preço por unidade em copinho separado de 100 ml"}</p>
-                    <IngredientGrid ingredients={availableFruits} selected={fruits} onToggle={toggleFruit} showPrices={false} includedLimit={calculation?.rule.fruitLimit || 0} extraLabel="Fruta extra" getExtraPrice={(item) => { const fruit = fruitOpts.find((f) => f.id === item.id); return fruit?.price ?? excess; }} />
-                    <p className="text-sm font-semibold text-purple-800 mt-5 mb-2">Cobertura incluída</p>
-                    <div className="grid grid-cols-2 gap-2">
-                      {TOPPING_OPTIONS.map((option) => <button key={option.id} onClick={() => setTopping(option)} className={`rounded-xl border px-3 py-2 text-left text-sm ${topping?.id === option.id ? "border-purple-700 bg-purple-50" : "border-purple-100"}`}>{option.name}{topping?.id === option.id && <Check size={14} className="inline ml-2 text-purple-700" />}</button>)}
-                    </div>
-                    <div className="mt-4 text-sm text-purple-700 space-y-1">
-                      {calculation?.ingredientExtraCount > 0 && <p>{calculation.ingredientExtraCount} ingrediente(s) extra(s): +{formatBRL(calculation.ingredientExcessPrice)}</p>}
-                      {calculation?.fruitExtraCount > 0 && <p>{calculation.fruitExtraCount} fruta(s) extra(s): +{formatBRL(calculation.fruitExcessPrice)}</p>}
-                      {size === 1000 && <p>3 ingredientes incluídos no copinho de 100 ml.</p>}
-                    </div>
-                  </>
-                )}
-                {isLayered ? (
-                  flowStep === 6 && (
-                    <div className="mt-6 flex flex-col sm:flex-row gap-2">
-                      <button onClick={() => { addToCart(buildSelection()); reset(); }} className="flex-1 py-3 rounded-xl bg-purple-800 text-white font-semibold flex items-center justify-center gap-2 hover:bg-purple-900 active:scale-[.98] transition-all">
-                        <ShoppingCart size={16} /> Adicionar ao carrinho — {formatBRL(calculation.total)}
-                      </button>
-                      <button onClick={() => { addToCart(buildSelection()); reset(); onOpenCart(); }} className="py-3 rounded-xl border border-purple-800 text-purple-800 font-semibold flex items-center justify-center gap-2 hover:bg-purple-50 active:scale-[.98] transition-all">
-                        Ir para o carrinho <ChevronRight size={16} />
-                      </button>
-                    </div>
-                  )
-                ) : (
-                  <>
-                    {showSummaryOptions && (
-                      <div className="fixed inset-0 z-40" onClick={() => setShowSummaryOptions(false)} />
-                    )}
-                    <div className="relative flex items-center justify-between mt-6 gap-3">
-                      <button onClick={() => setStep(1)} className="text-sm text-purple-500 flex items-center gap-1 hover:text-purple-800"><ArrowLeft size={14} /> voltar</button>
-                      <div className="relative">
-                        <button onClick={() => setShowSummaryOptions((v) => !v)} className="bg-purple-800 text-white font-semibold px-6 py-2.5 rounded-full hover:bg-purple-900">Ver resumo</button>
-                        {showSummaryOptions && (
-                          <div className="absolute bottom-full mb-2 right-0 bg-white rounded-lg shadow-lg border border-purple-200 p-2 z-50 min-w-[200px]">
-                            <button onClick={() => {
-                              setShowSummaryOptions(false);
-                              if (base && size) {
-                                addToCart(buildSelection());
-                              }
-                            }} className="w-full text-left px-3 py-2 text-sm text-purple-700 hover:bg-purple-50 rounded">
-                              Adicionar ao carrinho
-                            </button>
-                            <button onClick={() => {
-                              setShowSummaryOptions(false);
-                              if (base && size) {
-                                addToCart(buildSelection());
-                                onOpenCart();
-                              }
-                            }} className="w-full text-left px-3 py-2 text-sm text-purple-700 hover:bg-purple-50 rounded">
-                              Ir para o carrinho
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
-
-            {step === 3 && (
-              <div>
-                <p className="font-semibold text-purple-950 mb-4">Resumo do seu açaí</p>
-                <div className="rounded-2xl bg-purple-50 p-5">
-                  <div className="flex justify-between text-purple-950 font-semibold">
-                    <span>{itemLabel(base, size)}</span>
-                      <span>{formatBRL(calculation.basePrice)}</span>
-                  </div>
-                  {isLayered ? (
-                    <div className="mt-3 space-y-2 text-sm text-purple-700">
-                      {LAYER_LABELS.map((layerName, i) => (
-                        <div key={layerName}>
-                          <p className="font-semibold">{layerName}</p>
-                          {layers[i].length > 0 ? (
-                            <ul>{layers[i].map((ing, index) => <li key={ing.id} className="flex justify-between"><span>{ing.name}</span><span>{index >= calculation.rule.ingredientLimit ? `Ingrediente extra +${formatBRL(excess)}` : "Incluído"}</span></li>)}</ul>
-                          ) : (
-                            <p className="text-purple-400">—</p>
-                          )}
-                        </div>
-                      ))}
-                      {extras.length > 0 && (
-                        <div>
-                          <p className="font-semibold">Ingredientes extras — copinho 100 ml</p>
-                          <ul>{extras.map((extra) => <li key={extra.id}>{extra.name} — Ingrediente extra +{formatBRL(excess)}</li>)}</ul>
-                        </div>
-                      )}
-                      {fruits.length > 0 && (
-                        <div className="text-sm text-purple-700">
-                          <p className="font-semibold">Frutas extras — copinho 100 ml</p>
-                          <ul>{fruits.map((fruit) => { const fruitDef = fruitOpts.find((f) => f.id === fruit.id); return <li key={fruit.id}>{fruit.name} — Fruta extra +{formatBRL(fruitDef?.price ?? excess)}</li>; })}</ul>
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <>
-                      {ings.length > 0 && (
-                        <ul className="mt-3 space-y-1 text-sm text-purple-700">
-                          {ings.map((i, index) => (
-                            <li key={i.id} className="flex justify-between"><span>{i.name}</span><span>{index >= calculation.rule.ingredientLimit ? `Ingrediente extra +${formatBRL(excess)}` : "Incluído"}</span></li>
-                          ))}
-                        </ul>
-                      )}
-                      {fruits.length > 0 && <div className="mt-3 text-sm text-purple-700"><p className="font-semibold">Frutas</p><ul>{fruits.map((fruit, index) => { const fruitDef = fruitOpts.find((f) => f.id === fruit.id); return <li key={fruit.id}>{fruit.name} {index >= calculation.rule.fruitLimit ? `— Fruta extra +${formatBRL(fruitDef?.price ?? excess)}` : "— Incluída"}</li>; })}</ul></div>}
-                    </>
-                  )}
-                  {topping && <p className="mt-3 text-sm text-purple-700"><strong>Cobertura:</strong> {topping.name} (incluída)</p>}
-                  {calculation.ingredientExcessPrice > 0 && <p className="mt-2 text-sm text-purple-700">Ingredientes extras: +{formatBRL(calculation.ingredientExcessPrice)}</p>}
-                  {calculation.rule.cupSeparatedIngredients && <p className="mt-2 text-xs text-purple-500">Ingredientes em copinho separado de 100 ml.</p>}
-                  <div className="border-t border-purple-200 mt-4 pt-3 flex justify-between font-bold text-purple-950 text-lg">
-                    <span>Total do item</span><span>{formatBRL(calculation.total)}</span>
-                  </div>
-                </div>
-                <div className="flex items-center justify-between mt-6">
-                  <button onClick={() => setStep(2)} className="text-sm text-purple-500 flex items-center gap-1 hover:text-purple-800"><ArrowLeft size={14} /> voltar</button>
-                  <button onClick={handleAdd} className="bg-purple-800 text-white font-semibold px-6 py-2.5 rounded-full hover:bg-purple-900 flex items-center gap-2"><ShoppingCart size={16} /> Adicionar ao carrinho</button>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      </section>
-    );
-  }
-
-  /* ============================================================
     CARRINHO (drawer)
     ============================================================ */
 
@@ -1281,6 +953,7 @@ async function playNewOrderSound() {
                         ) : (
                           <>
                             {item.ingredients.length > 0 && <p className="text-xs text-purple-500 mt-0.5">{item.ingredients.map((i) => i.name).join(", ")}</p>}
+                            {item.extras?.length > 0 && <p className="text-xs text-purple-500 mt-0.5">Ingredientes extras (copinho 100 ml): {item.extras.map((ing) => ing.name).join(", ")}</p>}
                             {item.fruits?.length > 0 && <p className="text-xs text-purple-500 mt-0.5">Frutas: {item.fruits.map((fruit) => fruit.name).join(", ")}</p>}
                           </>
                         )}
@@ -1762,7 +1435,6 @@ function Footer({ config, onNav }) {
         <div className="flex gap-6 text-sm">
           <button onClick={() => onNav("inicio")} className="hover:text-white">Início</button>
           <button onClick={() => onNav("cardapio")} className="hover:text-white">Cardápio</button>
-          <button onClick={() => onNav("monte")} className="hover:text-white">Monte seu Açaí</button>
           <button onClick={() => onNav("contato")} className="hover:text-white">Contato</button>
         </div>
         <div className="flex items-center gap-3">
@@ -2397,6 +2069,11 @@ function printOrder(order) {
                       .map((label) => `<div>- ${escapeHtml(label)}</div>`)
                       .join("")}`
                   : "")
+                + (item.extras?.length
+                  ? `<div>Ingredientes extras — copinho 100 ml:</div>${item.extras
+                      .map((extra) => `<div>- ${escapeHtml(extra.name)}</div>`)
+                      .join("")}`
+                  : "")
                 + (item.fruits?.length
                   ? `<div>Frutas:</div>${getFruitDisplayList(item)
                       .map((label) => `<div>- ${escapeHtml(label)}</div>`)
@@ -2901,6 +2578,12 @@ function CounterOrderModal({
                               {item.ingredients
                                 .map((ingredient) => ingredient.name)
                                 .join(", ")}
+                            </p>
+                          )}
+                          {item.extras?.length > 0 && (
+                            <p className="text-xs text-purple-500">
+                              Ingredientes extras (copinho 100 ml):{" "}
+                              {item.extras.map((extra) => extra.name).join(", ")}
                             </p>
                           )}
                           {item.fruits?.length > 0 && (
@@ -3561,6 +3244,7 @@ function AdminOrdersTab({ orders, setOrders, showFinance = false }) {
                 ) : (
                   <>
                     {it.ingredients?.length > 0 && <p className="text-xs">Ingredientes: {it.ingredients.map((i) => i.name).join(", ")}</p>}
+                    {it.extras?.length > 0 && <p className="text-xs">Ingredientes extras (copinho 100 ml): {it.extras.map((x) => x.name).join(", ")}</p>}
                     {it.fruits?.length > 0 && <p className="text-xs">Frutas: {it.fruits.map((fruit) => fruit.name).join(", ")}</p>}
                   </>
                 )}
@@ -3617,6 +3301,9 @@ function AdminOrdersTab({ orders, setOrders, showFinance = false }) {
                     <>
                       {item.ingredients?.length > 0 && (
                         <p><strong>Ingredientes:</strong> {getIngredientDisplayList(item).join(", ")}</p>
+                      )}
+                      {item.extras?.length > 0 && (
+                        <p><strong>Ingredientes extras (copinho 100 ml):</strong> {item.extras.map((extra) => extra.name).join(", ")}</p>
                       )}
                       {item.fruits?.length > 0 && (
                         <p><strong>Frutas:</strong> {getFruitDisplayList(item).join(", ")}</p>
@@ -3752,7 +3439,6 @@ export default function App() {
   const [cartOpen, setCartOpen] = useState(false);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [addModal, setAddModal] = useState(null);
-  const [builderPrefill, setBuilderPrefill] = useState(null);
   const [sentBanner, setSentBanner] = useState(false);
   const [orderTrackingOpen, setOrderTrackingOpen] = useState(false);
   const [trackingOrderId, setTrackingOrderId] = useState(null);
@@ -3923,8 +3609,7 @@ useEffect(() => {
   const editItem = (item) => {
     removeItem(item.id);
     setCartOpen(false);
-    setBuilderPrefill({ category: item.category, size: item.size, ingredients: item.ingredients, fruits: item.fruits, topping: item.topping, layers: item.layers, extras: item.extras });
-    setTimeout(() => scrollTo("monte"), 100);
+    setAddModal({ category: item.category, size: item.size, initial: item });
   };
   const cartCount = cart.reduce((s, i) => s + i.qty, 0);
 
@@ -4036,7 +3721,6 @@ useEffect(() => {
       <Header cartCount={cartCount} onCartClick={() => setCartOpen(true)} onNav={scrollTo} />
       <Hero onNav={scrollTo} />
       <MenuSection prices={prices} onRequestAdd={(category, size) => setAddModal({ category, size })} />
-      <BuilderSection prices={prices} ingredients={ingredients} ingredientOrder={config.ingredient_order} fruitOrder={config.fruit_order} addToCart={addToCart} onOpenCart={() => setCartOpen(true)} prefill={builderPrefill} clearPrefill={() => setBuilderPrefill(null)} fruitOptions={fruitOptions} excessPrice={excessPrice} />
       <OrderTrackingSection onTrackOrder={handleTrackOrder} />
       <About />
       <Contact config={config} />
@@ -4051,6 +3735,7 @@ useEffect(() => {
       {addModal && (
         <AddProductModal
           category={addModal.category} size={addModal.size} prices={prices} ingredients={ingredients} ingredientOrder={config.ingredient_order} fruitOrder={config.fruit_order}
+          initial={addModal.initial}
           onClose={() => setAddModal(null)}
           onConfirm={(selection) => { addToCart({ category: addModal.category, size: addModal.size, ...selection }); setAddModal(null); }}
           onGoToCart={() => setCartOpen(true)}
