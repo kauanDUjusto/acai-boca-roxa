@@ -793,7 +793,13 @@ async function playNewOrderSound() {
                 </div>
                 <div className="flex items-center justify-between mt-6">
                   <button onClick={() => setStep(1)} className="text-sm text-purple-500 flex items-center gap-1 hover:text-purple-800"><ArrowLeft size={14} /> voltar</button>
-                  <button onClick={() => setCartOpen(true)} className="bg-purple-800 text-white font-semibold px-6 py-2.5 rounded-full hover:bg-purple-900">Ver resumo</button>
+                  <button onClick={() => {
+                    // Add current selection to cart preview and open cart drawer
+                    if (base && size) {
+                      addToCart({ category: base, size, ingredients: ings, fruits, topping, calculation });
+                      setCartOpen(true);
+                    }
+                  }} className="bg-purple-800 text-white font-semibold px-6 py-2.5 rounded-full hover:bg-purple-900">Ver resumo</button>
                 </div>
               </div>
             )}
