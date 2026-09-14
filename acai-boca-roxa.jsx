@@ -697,13 +697,14 @@ async function playNewOrderSound() {
     MONTE SEU AÇAÍ
     ============================================================ */
 
-  function BuilderSection({ prices, ingredients, ingredientOrder, fruitOrder, addToCart, prefill, clearPrefill }) {
+  function BuilderSection({ prices, ingredients, ingredientOrder, fruitOrder, addToCart, onOpenCart, prefill, clearPrefill }) {
     const [step, setStep] = useState(0);
     const [base, setBase] = useState(null);
     const [size, setSize] = useState(null);
     const [ings, setIngs] = useState([]);
     const [fruits, setFruits] = useState([]);
     const [topping, setTopping] = useState(TOPPING_OPTIONS[0]);
+    const [showSummaryOptions, setShowSummaryOptions] = useState(false);
 
     useEffect(() => {
       if (prefill) {
@@ -791,15 +792,35 @@ async function playNewOrderSound() {
                   {calculation?.fruitExtraCount > 0 && <p>{calculation.fruitExtraCount} fruta(s) extra(s): +{formatBRL(calculation.fruitExcessPrice)}</p>}
                   {size === 1000 && <p>3 ingredientes incluídos no copinho de 100 ml.</p>}
                 </div>
-                <div className="flex items-center justify-between mt-6">
+                {showSummaryOptions && (
+                  <div className="fixed inset-0 z-40" onClick={() => setShowSummaryOptions(false)} />
+                )}
+                <div className="relative flex items-center justify-between mt-6 gap-3">
                   <button onClick={() => setStep(1)} className="text-sm text-purple-500 flex items-center gap-1 hover:text-purple-800"><ArrowLeft size={14} /> voltar</button>
-                  <button onClick={() => {
-                    // Add current selection to cart preview and open cart drawer
-                    if (base && size) {
-                      addToCart({ category: base, size, ingredients: ings, fruits, topping, calculation });
-                      setCartOpen(true);
-                    }
-                  }} className="bg-purple-800 text-white font-semibold px-6 py-2.5 rounded-full hover:bg-purple-900">Ver resumo</button>
+                  <div className="relative">
+                    <button onClick={() => setShowSummaryOptions((v) => !v)} className="bg-purple-800 text-white font-semibold px-6 py-2.5 rounded-full hover:bg-purple-900">Ver resumo</button>
+                    {showSummaryOptions && (
+                      <div className="absolute bottom-full mb-2 right-0 bg-white rounded-lg shadow-lg border border-purple-200 p-2 z-50 min-w-[200px]">
+                        <button onClick={() => {
+                          setShowSummaryOptions(false);
+                          if (base && size) {
+                            addToCart({ category: base, size, ingredients: ings, fruits, topping, calculation });
+                          }
+                        }} className="w-full text-left px-3 py-2 text-sm text-purple-700 hover:bg-purple-50 rounded">
+                          Adicionar ao carrinho
+                        </button>
+                        <button onClick={() => {
+                          setShowSummaryOptions(false);
+                          if (base && size) {
+                            addToCart({ category: base, size, ingredients: ings, fruits, topping, calculation });
+                            onOpenCart();
+                          }
+                        }} className="w-full text-left px-3 py-2 text-sm text-purple-700 hover:bg-purple-50 rounded">
+                          Ir para o carrinho
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             )}
@@ -3352,7 +3373,7 @@ useEffect(() => {
       <Header cartCount={cartCount} onCartClick={() => setCartOpen(true)} onNav={scrollTo} />
       <Hero onNav={scrollTo} />
       <MenuSection prices={prices} onRequestAdd={(category, size) => setAddModal({ category, size })} />
-      <BuilderSection prices={prices} ingredients={ingredients} ingredientOrder={config.ingredient_order} fruitOrder={config.fruit_order} addToCart={addToCart} prefill={builderPrefill} clearPrefill={() => setBuilderPrefill(null)} />
+      <BuilderSection prices={prices} ingredients={ingredients} ingredientOrder={config.ingredient_order} fruitOrder={config.fruit_order} addToCart={addToCart} onOpenCart={() => setCartOpen(true)} prefill={builderPrefill} clearPrefill={() => setBuilderPrefill(null)} />
       <OrderTrackingSection onTrackOrder={handleTrackOrder} />
       <About />
       <Contact config={config} />
