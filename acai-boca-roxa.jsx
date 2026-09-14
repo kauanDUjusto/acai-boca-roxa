@@ -383,8 +383,8 @@ async function playNewOrderSound() {
     cart.forEach((item) => {
       lines.push(`${item.qty}x ${itemLabel(item.category, item.size)}`);
       if (item.layers?.length === 3) {
-        LAYER_LABELS.forEach((layerName, i) => {
-          lines.push(`${layerName}: ${item.layers[i]?.ingredients?.length ? item.layers[i].ingredients.map((x) => x.name).join(", ") : "—"}`);
+        [2, 1, 0].forEach((i) => {
+          lines.push(`${LAYER_LABELS[i]}: ${item.layers[i]?.ingredients?.length ? item.layers[i].ingredients.map((x) => x.name).join(", ") : "—"}`);
         });
         if (item.extras?.length) {
           lines.push(`Ingredientes extras — copinho 100 ml: ${item.extras.map((x) => x.name).join(", ")}`);
@@ -464,7 +464,7 @@ async function playNewOrderSound() {
     );
   }
 
-  function IngredientGrid({ ingredients, selected, onToggle, showPrices = true, includedLimit = 0, extraLabel = "Ingrediente extra", getExtraPrice, fullNames = false, activeLabel }) {
+  function IngredientGrid({ ingredients, selected, onToggle, showPrices = true, includedLimit = 0, extraLabel = "Ingrediente extra", getExtraPrice, fullNames = false }) {
     const isSel = (id) => selected.some((s) => s.id === id);
     return (
       <div className={`grid gap-2.5 ${fullNames ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-2 sm:grid-cols-3"}`}>
@@ -486,7 +486,7 @@ async function playNewOrderSound() {
                 {!showPrices && active
                   ? selected.findIndex((item) => item.id === ing.id) >= includedLimit
                     ? `${extraLabel} +${formatBRL(getExtraPrice ? getExtraPrice(ing) : PRODUCT_RULES.excessPrice)}`
-                    : activeLabel ? activeLabel(selected.findIndex((item) => item.id === ing.id)) : "Incluído"
+                    : "Incluído"
                   : showPrices ? ing.free ? "Grátis" : `+ ${formatBRL(ing.price)}` : "Selecionar"}
               </span>
             </button>
@@ -541,11 +541,11 @@ async function playNewOrderSound() {
     MODAL: escolher ingredientes ao adicionar produto do cardápio
     ============================================================ */
 
-  function Cup700Visual({ ings }) {
-    const layers = [
-      { label: "1ª camada", ings: ings.slice(0, 2), bg: "bg-purple-700", textLight: true },
-      { label: "2ª camada", ings: ings.slice(2, 4), bg: "bg-purple-400", textLight: true },
-      { label: "3ª camada", ings: ings.slice(4, 6), bg: "bg-purple-200", textLight: false },
+  function Cup700Visual({ layers }) {
+    const configs = [
+      { label: "1ª camada", bg: "bg-purple-700", textLight: true },
+      { label: "2ª camada", bg: "bg-purple-400", textLight: true },
+      { label: "3ª camada", bg: "bg-purple-200", textLight: false },
     ];
     return (
       <div className="flex flex-col items-center select-none">
@@ -553,69 +553,84 @@ async function playNewOrderSound() {
           <div className="absolute inset-x-3 top-2.5 h-1.5 rounded-full bg-purple-100" />
         </div>
         <div className="w-48 overflow-hidden rounded-b-2xl rounded-t-md border-x-2 border-b-2 border-purple-300 shadow-lg shadow-purple-900/10">
-          {layers.map(({ label, ings: layerIngs, bg, textLight }) => (
-            <div key={label} className={`${bg} px-2.5 py-2 min-h-[56px] border-t border-white/30`}>
-              <p className={`text-[10px] font-bold uppercase tracking-widest flex items-center justify-between gap-1 ${textLight ? "text-white/85" : "text-purple-900/70"}`}>
-                <span>{label}</span>
-                <span className={`w-2 h-2 rounded-full shrink-0 ${layerIngs.length ? "bg-emerald-300" : "bg-white/40"}`} />
-              </p>
-              <p className={`mt-1 text-[11px] font-semibold leading-snug break-words whitespace-normal ${textLight ? "text-white/95" : "text-purple-900/80"}`}>
-                {layerIngs.length ? layerIngs.map((x) => x.name).join(" + ") : "Aguardando ingredientes"}
-              </p>
-            </div>
-          ))}
+          {configs.map(({ label, bg, textLight }, i) => {
+            const layerIngs = layers[i] || [];
+            return (
+              <div key={label} className={`${bg} px-2.5 py-2 min-h-[56px] border-t border-white/30`}>
+                <p className={`text-[10px] font-bold uppercase tracking-widest flex items-center justify-between gap-1 ${textLight ? "text-white/85" : "text-purple-900/70"}`}>
+                  <span>{label}</span>
+                  <span className={`w-2 h-2 rounded-full shrink-0 ${layerIngs.length ? "bg-emerald-300" : "bg-white/40"}`} />
+                </p>
+                <p className={`mt-1 text-[11px] font-semibold leading-snug break-words whitespace-normal ${textLight ? "text-white/95" : "text-purple-900/80"}`}>
+                  {layerIngs.length ? layerIngs.map((x) => x.name).join(" + ") : "Sem ingrediente"}
+                </p>
+              </div>
+            );
+          })}
         </div>
         <div className="w-32 h-2.5 rounded-b-xl border-2 border-t-0 border-purple-300 bg-purple-50" />
       </div>
     );
   }
 
-  function Cup700View({ limit, ings, onToggleIng, availableIngredients, extras, onToggleExtra, fruits, onToggleFruit, availableFruits, fruitOpts, excess, topping, setTopping, calculation }) {
-    const isFull = ings.length >= limit;
+  function Cup700View({ limit, layers, onToggleLayer, availableIngredients, extras, onToggleExtra, fruits, onToggleFruit, availableFruits, fruitOpts, excess, topping, setTopping, calculation }) {
+    const totalIngs = layers.reduce((s, l) => s + l.length, 0);
     const layerBars = ["bg-purple-700", "bg-purple-400", "bg-purple-200"];
+    const layerLimit = 2;
 
     return (
       <div>
         <div className="mb-4">
           <div className="flex items-center justify-between gap-2">
             <p className="text-xl font-black text-purple-950">🥤 Copo de 700 ml</p>
-            <span className="shrink-0 text-sm font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-full">{ings.length} de {limit} ingredientes</span>
+            <span className="shrink-0 text-sm font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-full">{totalIngs} de {limit} ingredientes</span>
           </div>
-          <p className="text-sm text-purple-500 mt-1.5 leading-relaxed">Escolha até {limit} ingredientes. A cada 2 ingredientes escolhidos, eles formam uma camada do seu copo.</p>
+          <p className="text-sm text-purple-500 mt-1.5 leading-relaxed">Escolha até 2 ingredientes para cada camada.</p>
         </div>
 
         <div className="flex flex-col items-center mb-6">
-          <Cup700Visual ings={ings} />
+          <Cup700Visual layers={layers} />
           <div className="mt-3 flex items-center gap-4 text-xs font-semibold text-purple-600">
-            <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-purple-700" /> 1ª camada</span>
-            <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-purple-400" /> 2ª camada</span>
-            <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-purple-200 border border-purple-400" /> 3ª camada</span>
+            <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-purple-700" /> 1ª camada (topo)</span>
+            <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-purple-400" /> 2ª camada (meio)</span>
+            <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-purple-200 border border-purple-400" /> 3ª camada (fundo)</span>
           </div>
         </div>
 
-        <div className="rounded-2xl border border-purple-100 p-4">
-          <p className="font-black text-purple-950">🥤 Ingredientes</p>
-          <p className="text-xs text-purple-500 mt-0.5 mb-3">A ordem das escolhas define as camadas: 1º e 2º → 1ª camada, 3º e 4º → 2ª camada, 5º e 6º → 3ª camada.</p>
-          {isFull && (
-            <p className="mb-3 flex items-center gap-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold px-3 py-2">
-              <Info size={14} className="shrink-0" /> Você já escolheu os {limit} ingredientes permitidos.
-            </p>
-          )}
-          <IngredientGrid ingredients={availableIngredients} selected={ings} onToggle={onToggleIng} showPrices={false} includedLimit={limit} extraLabel="Ingrediente extra" getExtraPrice={() => excess} fullNames activeLabel={(index) => `Camada ${Math.floor(index / 2) + 1}`} />
+        <div className="space-y-4">
+          {LAYER_LABELS.map((label, i) => {
+            const layerCount = (layers[i] || []).length;
+            const layerFull = layerCount >= layerLimit;
+            return (
+              <div key={label} className="rounded-2xl border border-purple-100 p-4">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="font-black text-purple-950">{label}</p>
+                  <span className="shrink-0 text-xs font-bold text-purple-600 bg-purple-50 border border-purple-100 px-2.5 py-1 rounded-full">{layerCount}/{layerLimit}</span>
+                </div>
+                <p className="text-xs text-purple-500 mt-0.5 mb-3">Escolha até 2 ingredientes</p>
+                {layerFull && (
+                  <p className="mb-3 flex items-center gap-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold px-3 py-2">
+                    <Info size={14} className="shrink-0" /> Máximo de 2 ingredientes nesta camada atingido.
+                  </p>
+                )}
+                <IngredientGrid ingredients={availableIngredients} selected={layers[i] || []} onToggle={(ing) => onToggleLayer(i, ing)} showPrices={false} includedLimit={layerLimit} extraLabel="Ingrediente extra" getExtraPrice={() => excess} fullNames />
+              </div>
+            );
+          })}
         </div>
 
         <div className="mt-6 rounded-2xl border border-purple-100 p-4">
           <p className="text-lg font-bold text-purple-950">Como ficará seu copo</p>
           <div className="mt-3 space-y-3">
             {LAYER_LABELS.map((label, i) => {
-              const layerIngs = ings.slice(i * 2, i * 2 + 2);
+              const layerIngs = layers[i] || [];
               return (
                 <div key={label} className="flex items-center gap-3">
                   <span className={`w-3 h-9 rounded-full shrink-0 ${layerBars[i]} border border-purple-300`} />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-bold text-purple-950">{label}</p>
                     <p className={`text-sm break-words whitespace-normal leading-snug ${layerIngs.length ? "text-purple-700" : "text-purple-400"}`}>
-                      {layerIngs.length ? layerIngs.map((x) => x.name).join(" + ") : "Aguardando ingredientes"}
+                      {layerIngs.length ? layerIngs.map((x) => x.name).join(" + ") : "Sem ingrediente"}
                     </p>
                   </div>
                 </div>
@@ -660,6 +675,13 @@ async function playNewOrderSound() {
 
   function AddProductModal({ category, size, prices, ingredients, ingredientOrder, fruitOrder, onClose, onConfirm, onGoToCart, fruitOptions, excessPrice, initial = null }) {
     const [ings, setIngs] = useState(initial?.ingredients || []);
+    const [layers, setLayers] = useState(
+      initial?.layers?.length === 3
+        ? initial.layers.map((l) => (Array.isArray(l) ? l : l?.ingredients || []))
+        : initial?.ingredients?.length
+          ? [initial.ingredients.slice(0, 2), initial.ingredients.slice(2, 4), initial.ingredients.slice(4, 6)]
+          : [[], [], []]
+    );
     const [fruits, setFruits] = useState(initial?.fruits || []);
     const [extras, setExtras] = useState(initial?.extras || []);
     const [topping, setTopping] = useState(initial?.topping || TOPPING_OPTIONS[0]);
@@ -671,13 +693,18 @@ async function playNewOrderSound() {
     const toggle = (ing) => setIngs((prev) => (prev.some((i) => i.id === ing.id) ? prev.filter((i) => i.id !== ing.id) : [...prev, ing]));
     const toggleFruit = (fruit) => setFruits((prev) => (prev.some((i) => i.id === fruit.id) ? prev.filter((i) => i.id !== fruit.id) : [...prev, fruit]));
     const toggleExtra = (ing) => setExtras((prev) => (prev.some((i) => i.id === ing.id) ? prev.filter((i) => i.id !== ing.id) : [...prev, ing]));
-    const toggleIng700 = (ing) => setIngs((prev) => (prev.some((i) => i.id === ing.id) ? prev.filter((i) => i.id !== ing.id) : prev.length >= CUP_700_INGREDIENT_LIMIT ? prev : [...prev, ing]));
+    const toggleLayer = (layerIndex, ing) => setLayers((prev) => prev.map((arr, i) => {
+      if (i !== layerIndex) return arr;
+      if (arr.some((x) => x.id === ing.id)) return arr.filter((x) => x.id !== ing.id);
+      if (arr.length >= 2) return arr;
+      return [...arr, ing];
+    }));
     const calculation = is700
-      ? calculateProductPrice({ category, size, ingredients: [...ings, ...extras], fruits, topping }, prices, { fruitOptions: fruitOpts, excessPrice: excess })
+      ? calculateProductPrice({ category, size, ingredients: [...layers[0], ...layers[1], ...layers[2], ...extras], fruits, topping }, prices, { fruitOptions: fruitOpts, excessPrice: excess })
       : calculateProductPrice({ category, size, ingredients: ings, fruits, topping }, prices, { fruitOptions: fruitOpts, excessPrice: excess });
     const label = itemLabel(category, size);
     const buildSelection = () => is700
-      ? { ingredients: ings, extras, fruits, topping, calculation }
+      ? { layers: layers.map((arr) => ({ ingredients: arr })), extras, fruits, topping, calculation }
       : { ingredients: ings, fruits, topping, calculation };
 
     return (
@@ -701,8 +728,8 @@ async function playNewOrderSound() {
         {is700 ? (
           <Cup700View
             limit={CUP_700_INGREDIENT_LIMIT}
-            ings={ings}
-            onToggleIng={toggleIng700}
+            layers={layers}
+            onToggleLayer={toggleLayer}
             availableIngredients={availableIngredients}
             extras={extras}
             onToggleExtra={toggleExtra}
@@ -2056,7 +2083,7 @@ function printOrder(order) {
 
           ${
             item.layers?.length === 3
-              ? LAYER_LABELS.map((layerName, i) => `<div class="bold">${escapeHtml(layerName)}:</div>${item.layers[i]?.ingredients?.length ? item.layers[i].ingredients.map((ing) => `<div>- ${escapeHtml(ing.name)}</div>`).join("") : "<div>- —</div>"}`).join("")
+              ? [2, 1, 0].map((i) => `<div class="bold">${escapeHtml(LAYER_LABELS[i])}:</div>${item.layers[i]?.ingredients?.length ? item.layers[i].ingredients.map((ing) => `<div>- ${escapeHtml(ing.name)}</div>`).join("") : "<div>- —</div>"}`).join("")
                 + (item.extras?.length ? `<div class="bold">Ingredientes extras — copinho 100 ml:</div>${item.extras.map((extra) => `<div>- ${escapeHtml(extra.name)}</div>`).join("")}` : "")
                 + (item.fruits?.length ? `<div class="bold">Frutas extras — copinho 100 ml:</div>${getFruitDisplayList(item).map((label) => `<div>- ${escapeHtml(label)}</div>`).join("")}` : "")
               : ""
@@ -2549,9 +2576,9 @@ function CounterOrderModal({
 
                       {item.layers?.length === 3 ? (
                         <div className="mt-1 space-y-0.5">
-                          {LAYER_LABELS.map((layerName, i) => (
-                            <p key={layerName} className="text-xs text-purple-500">
-                              {layerName}:{" "}
+                          {[2, 1, 0].map((i) => (
+                            <p key={LAYER_LABELS[i]} className="text-xs text-purple-500">
+                              {LAYER_LABELS[i]}:{" "}
                               {item.layers[i]?.ingredients?.length
                                 ? item.layers[i].ingredients.map((ing) => ing.name).join(", ")
                                 : "—"}
@@ -3235,8 +3262,8 @@ function AdminOrdersTab({ orders, setOrders, showFinance = false }) {
                 <p>{it.qty}x {itemLabel(it.category, it.size)}</p>
                 {it.layers?.length === 3 ? (
                   <div className="text-xs">
-                    {LAYER_LABELS.map((layerName, i) => (
-                      <p key={layerName}>{layerName}: {it.layers[i]?.ingredients?.length ? it.layers[i].ingredients.map((ing) => ing.name).join(", ") : "—"}</p>
+                    {[2, 1, 0].map((i) => (
+                      <p key={LAYER_LABELS[i]}>{LAYER_LABELS[i]}: {it.layers[i]?.ingredients?.length ? it.layers[i].ingredients.map((ing) => ing.name).join(", ") : "—"}</p>
                     ))}
                     {it.extras?.length > 0 && <p>Ingredientes extras (copinho 100 ml): {it.extras.map((x) => x.name).join(", ")}</p>}
                     {it.fruits?.length > 0 && <p>Frutas extras (copinho 100 ml): {it.fruits.map((f) => f.name).join(", ")}</p>}
@@ -3291,8 +3318,8 @@ function AdminOrdersTab({ orders, setOrders, showFinance = false }) {
                   <p className="font-bold">{item.qty}x {itemLabel(item.category, item.size)}</p>
                   {item.layers?.length === 3 ? (
                     <div className="space-y-0.5">
-                      {LAYER_LABELS.map((layerName, i) => (
-                        <p key={layerName}><strong>{layerName}:</strong> {item.layers[i]?.ingredients?.length ? item.layers[i].ingredients.map((ing) => ing.name).join(", ") : "—"}</p>
+                      {[2, 1, 0].map((i) => (
+                        <p key={LAYER_LABELS[i]}><strong>{LAYER_LABELS[i]}:</strong> {item.layers[i]?.ingredients?.length ? item.layers[i].ingredients.map((ing) => ing.name).join(", ") : "—"}</p>
                       ))}
                       {item.extras?.length > 0 && <p><strong>Ingredientes extras (copinho 100 ml):</strong> {item.extras.map((extra) => extra.name).join(", ")}</p>}
                       {item.fruits?.length > 0 && <p><strong>Frutas extras (copinho 100 ml):</strong> {item.fruits.map((fruit) => fruit.name).join(", ")}</p>}
