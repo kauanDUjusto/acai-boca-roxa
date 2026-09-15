@@ -166,8 +166,8 @@ async function playNewOrderSound() {
     { id: "fruta-kiwi", name: "Kiwi", price: 5, free: false, type: "fruit" },
   ];
   const ADDITIONAL_OPTIONS = [
-    ["Granola", 3], ["Paçoca", 3], ["Amendoim", 3], ["Leite em pó", 3],
-    ["Aveia", 3], ["Flocos de Tapioca", 3], ["Choco Ball", 4], ["Sucrilhos", 4],
+    ["Granola", 4], ["Paçoca", 4], ["Amendoim", 4], ["Leite em pó", 4],
+    ["Aveia", 4], ["Flocos de Tapioca", 4], ["Choco Ball", 4], ["Sucrilhos", 4],
     ["Granulado", 4], ["Flocos de Arroz", 4], ["Farinha Láctea", 4],
     ["Coco Ralado", 4],
   ].map(([name, price]) => ({ id: `adicional-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`, name, price, free: false, type: "additional" }));
@@ -2410,31 +2410,81 @@ function CounterOrderModal({
   fruitOrder,
   onClose,
   fruitOptions,
-  excessPrice,
 }) {
   const [items, setItems] = useState([]);
-  const [addModal, setAddModal] = useState(null);
+  const [step, setStep] = useState("type"); // type, product, size, ingredients, payment, confirm
+  const [selectedType, setSelectedType] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState("");
+  const [selectedSize, setSelectedSize] = useState(null);
+  const [selectedIngredients, setSelectedIngredients] = useState([]);
+  const [selectedFruits, setSelectedFruits] = useState([]);
+  const [selectedTopping, setSelectedTopping] = useState(TOPPING_OPTIONS[0]);
   const [paymentMethod, setPaymentMethod] = useState("");
-  const [customerName, setCustomerName] = useState("");
-  const [consumeType, setConsumeType] = useState("");
+  
+  const fruitOpts = fruitOptions || DEFAULT_FRUIT_OPTIONS;
+  const availableIngredients = sortBySavedOrder([...normalIngredients(ingredients), ...ADDITIONAL_OPTIONS.filter((option) => !ingredients.some((ing) => ingredientNameKey(ing) === ingredientNameKey(option)))], ingredientOrder);
+  const availableFruits = sortBySavedOrder(fruitOpts, fruitOrder);
 
   const total = items.reduce(
     (sum, item) => sum + (Number(item.finalPrice) || 0) * (Number(item.qty) || 1),
     0
   );
 
-  const addItem = (selection) => {
+  const resetProductSelection = () => {
+    setSelectedCategory("");
+    setSelectedSize(null);
+    setSelectedIngredients([]);
+    setSelectedFruits([]);
+    setSelectedTopping(TOPPING_OPTIONS[0]);
+  };
+
+  const addItemToCart = () => {
+    if (!selectedCategory || !selectedSize) return;
+
+    const rule = getProductRule(selectedCategory, selectedSize);
+    
+    // Calcular extras baseado em número de seleções (não em ingredientes únicos)
+    // Ingredientes e frutas têm limites separados
+    const ingredientExtras = selectedIngredients.slice(rule.ingredientLimit);
+    const fruitExtras = selectedFruits.slice(rule.fruitLimit);
+    
+    // Calcular preço dos extras
+    const getExtraPrice = (item) => {
+      const nameKey = ingredientNameKey(item);
+      if (nameKey === "m&m") return 5;
+      if (item.name === "Kiwi") return 5;
+      return 4;
+    };
+
+    const ingredientExtraPrice = ingredientExtras.reduce((sum, ing) => sum + getExtraPrice(ing), 0);
+    const fruitExtraPrice = fruitExtras.reduce((sum, fruit) => sum + getExtraPrice(fruit), 0);
+    
+    const basePrice = prices[selectedCategory][selectedSize];
+    const finalPrice = basePrice + ingredientExtraPrice + fruitExtraPrice;
+
     const item = {
       id: `${Date.now()}-${Math.random()}`,
-      category: addModal.category,
-      size: addModal.size,
-      ...selection,
+      category: selectedCategory,
+      size: selectedSize,
+      ingredients: selectedIngredients,
+      fruits: selectedFruits,
+      topping: selectedTopping,
       qty: 1,
-      finalPrice: selection.calculation.total,
+      finalPrice,
+      calculation: {
+        basePrice,
+        ingredientExtraPrice,
+        fruitExtraPrice,
+        total: finalPrice,
+        rule,
+        ingredientExtraCount: ingredientExtras.length,
+        fruitExtraCount: fruitExtras.length,
+      },
     };
 
     setItems((current) => [...current, item]);
-    setAddModal(null);
+    resetProductSelection();
+    setStep("product"); // Volta para escolher produto
   };
 
   const removeItem = (id) => {
@@ -2453,17 +2503,25 @@ function CounterOrderModal({
     );
   };
 
+  const clearCart = () => {
+    setItems([]);
+    resetProductSelection();
+    setStep("type");
+    setSelectedType("");
+    setPaymentMethod("");
+  };
+
   const finalizeOrder = async () => {
-    if (items.length === 0 || !paymentMethod) return;
+    if (items.length === 0 || !paymentMethod || !selectedType) return;
 
     const order = {
       id: `balcão-${Date.now()}`,
       createdAt: new Date().toISOString(),
       customer: {
-        name: customerName || "Cliente do balcão",
-        address: consumeType === "local" ? "Comer no local" : "Para levar",
+        name: "Cliente do balcão",
+        address: selectedType === "local" ? "Comer no local" : selectedType === "levar" ? "Para levar" : "Delivery",
         payment: paymentMethod,
-        note: `Pedido balcão - ${consumeType === "local" ? "Comer no local" : "Para levar"}`,
+        note: `Pedido balcão - ${selectedType === "local" ? "Comer no local" : selectedType === "levar" ? "Para levar" : "Delivery"}`,
       },
       items: items,
       subtotal: total,
@@ -2497,10 +2555,7 @@ function CounterOrderModal({
       return;
     }
 
-    setItems([]);
-    setPaymentMethod("");
-    setCustomerName("");
-    setConsumeType("");
+    clearCart();
     onClose();
   };
 
@@ -2512,259 +2567,490 @@ function CounterOrderModal({
     ["barca", "Barca"],
   ];
 
-  
-  return (
-    <>
-      <Modal
-        title="🛒 Novo pedido balcão"
-        onClose={onClose}
-        footer={
-          <div className="space-y-3">
-            <div className="flex items-center justify-between text-lg font-black text-purple-950">
-              <span>Total</span>
-              <span>{formatBRL(total)}</span>
-            </div>
+  const toggleIngredient = (ing) => {
+    setSelectedIngredients((prev) => [...prev, ing]);
+  };
 
-            <select
-              value={paymentMethod}
-              onChange={(event) => setPaymentMethod(event.target.value)}
-              className="w-full rounded-xl border border-purple-200 bg-white px-4 py-3 text-sm font-semibold text-purple-950 outline-none focus:border-purple-500"
-            >
-              <option value="">Forma de pagamento</option>
-              <option value="Pix">Pix</option>
-              <option value="Dinheiro">Dinheiro</option>
-              <option value="Cartão de crédito">Cartão de crédito</option>
-              <option value="Cartão de débito">Cartão de débito</option>
-            </select>
+  const toggleFruit = (fruit) => {
+    setSelectedFruits((prev) => [...prev, fruit]);
+  };
 
-            <button
-              onClick={finalizeOrder}
-              disabled={items.length === 0 || !paymentMethod || !consumeType}
-              className="w-full rounded-xl bg-purple-800 py-3 font-bold text-white hover:bg-purple-900 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              Finalizar comanda
-            </button>
-          </div>
-        }
-      >
-        <div className="space-y-4">
-          <div>
-            <p className="text-sm font-bold text-purple-950">
-              Dados do cliente
-            </p>
+  const removeLastIngredient = () => {
+    setSelectedIngredients((prev) => prev.slice(0, -1));
+  };
 
-            <input
-              type="text"
-              value={customerName}
-              onChange={(e) => setCustomerName(e.target.value)}
-              placeholder="Nome do cliente (opcional)"
-              className="w-full mt-2 rounded-xl border border-purple-200 bg-white px-4 py-3 text-sm font-semibold text-purple-950 outline-none focus:border-purple-500"
-            />
+  const removeLastFruit = () => {
+    setSelectedFruits((prev) => prev.slice(0, -1));
+  };
 
-            <div className="mt-3 grid grid-cols-2 gap-2">
+  const getExtraPrice = (item) => {
+    const nameKey = ingredientNameKey(item);
+    if (nameKey === "m&m") return 5;
+    if (item.name === "Kiwi") return 5;
+    return 4;
+  };
+
+  const renderStep = () => {
+    switch (step) {
+      case "type":
+        return (
+          <div className="space-y-4">
+            <h3 className="text-xl font-bold text-purple-950 text-center">Como será o pedido?</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <button
-                onClick={() => setConsumeType("local")}
-                className={`rounded-xl border px-4 py-3 text-sm font-semibold transition-all ${
-                  consumeType === "local"
-                    ? "border-purple-700 bg-purple-50 text-purple-950"
-                    : "border-purple-200 bg-white text-purple-700 hover:border-purple-300"
-                }`}
+                onClick={() => { setSelectedType("local"); setStep("product"); }}
+                className="p-6 rounded-2xl border-2 border-purple-200 bg-white hover:border-purple-500 hover:bg-purple-50 transition-all text-center"
               >
-                🍽️ Comer no local
+                <div className="text-3xl mb-2">🪑</div>
+                <div className="font-bold text-purple-950">Comer no local</div>
               </button>
               <button
-                onClick={() => setConsumeType("levar")}
-                className={`rounded-xl border px-4 py-3 text-sm font-semibold transition-all ${
-                  consumeType === "levar"
-                    ? "border-purple-700 bg-purple-50 text-purple-950"
-                    : "border-purple-200 bg-white text-purple-700 hover:border-purple-300"
-                }`}
+                onClick={() => { setSelectedType("levar"); setStep("product"); }}
+                className="p-6 rounded-2xl border-2 border-purple-200 bg-white hover:border-purple-500 hover:bg-purple-50 transition-all text-center"
               >
-                🥡 Para levar
+                <div className="text-3xl mb-2">🛍️</div>
+                <div className="font-bold text-purple-950">Para levar</div>
+              </button>
+              <button
+                onClick={() => { setSelectedType("delivery"); setStep("product"); }}
+                className="p-6 rounded-2xl border-2 border-purple-200 bg-white hover:border-purple-500 hover:bg-purple-50 transition-all text-center"
+              >
+                <div className="text-3xl mb-2">🛵</div>
+                <div className="font-bold text-purple-950">Delivery</div>
               </button>
             </div>
           </div>
+        );
 
-          <div>
-            <p className="text-sm font-bold text-purple-950">
-              Adicionar produto
-            </p>
-
-            <div className="mt-2 grid grid-cols-2 gap-2">
+      case "product":
+        return (
+          <div className="space-y-4">
+            <h3 className="text-xl font-bold text-purple-950 text-center">Escolha o produto</h3>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               {productOptions.map(([category, label]) => (
-                <div
+                <button
                   key={category}
-                  className="rounded-xl border border-purple-200 bg-purple-50 p-2"
+                  onClick={() => { setSelectedCategory(category); setStep("size"); }}
+                  className="p-4 rounded-2xl border-2 border-purple-200 bg-white hover:border-purple-500 hover:bg-purple-50 transition-all text-center"
                 >
-                  <p className="px-1 pb-2 text-sm font-black text-purple-900">
-                    {label}
-                  </p>
-
-                  <div className="grid grid-cols-2 gap-1.5">
-                    {SIZE_OPTIONS[category]?.map((size) => (
-                      <button
-                        key={String(size)}
-                        onClick={() =>
-                          setAddModal({
-                            category,
-                            size,
-                          })
-                        }
-                        className="rounded-lg border border-purple-200 bg-white px-2 py-2 text-xs font-bold text-purple-800 hover:bg-purple-100"
-                      >
-                        {category === "barca"
-                          ? size === "grande"
-                            ? "Grande"
-                            : "Pequena"
-                          : `${size} ml`}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+                  <div className="text-2xl mb-2">🟣</div>
+                  <div className="font-bold text-purple-950">{label}</div>
+                </button>
               ))}
             </div>
+            <button
+              onClick={() => setStep("type")}
+              className="w-full py-3 rounded-xl border border-purple-300 text-purple-700 font-semibold hover:bg-purple-50"
+            >
+              ← Voltar
+            </button>
           </div>
+        );
 
-          {items.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-purple-200 px-4 py-8 text-center">
-              <ShoppingCart className="mx-auto text-purple-300" size={30} />
-              <p className="mt-2 text-sm font-semibold text-purple-500">
-                Nenhum produto na comanda
-              </p>
-              <p className="text-xs text-purple-400">
-                Escolha um produto acima para começar.
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {items.map((item) => (
-                <div
-                  key={item.id}
-                  className="rounded-xl border border-purple-100 bg-white p-3"
+      case "size":
+        const sizes = SIZE_OPTIONS[selectedCategory] || [];
+        return (
+          <div className="space-y-4">
+            <h3 className="text-xl font-bold text-purple-950 text-center">Tamanho</h3>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {sizes.map((size) => (
+                <button
+                  key={String(size)}
+                  onClick={() => { setSelectedSize(size); setStep("ingredients"); }}
+                  className={`p-4 rounded-2xl border-2 transition-all text-center ${
+                    selectedSize === size 
+                      ? "border-purple-700 bg-purple-50" 
+                      : "border-purple-200 bg-white hover:border-purple-500 hover:bg-purple-50"
+                  }`}
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="font-bold text-purple-950">
-                        {itemLabel(item.category, item.size)}
-                      </p>
+                  <div className="font-bold text-purple-950">
+                    {selectedCategory === "barca"
+                      ? size === "grande" ? "Grande" : "Pequena"
+                      : `${size} ml`}
+                  </div>
+                  <div className="text-sm text-purple-600 mt-1">
+                    {formatBRL(prices[selectedCategory]?.[size] || 0)}
+                  </div>
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={() => { setSelectedCategory(""); setStep("product"); }}
+              className="w-full py-3 rounded-xl border border-purple-300 text-purple-700 font-semibold hover:bg-purple-50"
+            >
+              ← Voltar
+            </button>
+          </div>
+        );
 
-                      {item.layers?.length === 3 ? (
-                        <div className="mt-1 space-y-0.5">
-                          {[2, 1, 0].map((i) => (
-                            <p key={LAYER_LABELS[i]} className="text-xs text-purple-500">
-                              {LAYER_LABELS[i]}:{" "}
-                              {item.layers[i]?.ingredients?.length
-                                ? item.layers[i].ingredients.map((ing) => ing.name).join(", ")
-                                : "—"}
-                            </p>
-                          ))}
-                          {item.extras?.length > 0 && (
-                            <p className="text-xs text-purple-500">
-                              Ingredientes extras (copinho 100 ml):{" "}
-                              {item.extras.map((extra) => extra.name).join(", ")}
-                            </p>
-                          )}
-                          {item.fruits?.length > 0 && (
-                            <p className="text-xs text-purple-500">
-                              Frutas extras (copinho 100 ml):{" "}
-                              {item.fruits.map((fruit) => fruit.name).join(", ")}
-                            </p>
-                          )}
+      case "ingredients":
+        const rule = getProductRule(selectedCategory, selectedSize);
+        const ingredientExtraList = selectedIngredients.slice(rule.ingredientLimit);
+        const fruitExtraList = selectedFruits.slice(rule.fruitLimit);
+        const totalExtras = ingredientExtraList.length + fruitExtraList.length;
+        const extrasPrice =
+          ingredientExtraList.reduce((sum, ing) => sum + getExtraPrice(ing), 0) +
+          fruitExtraList.reduce((sum, fruit) => sum + getExtraPrice(fruit), 0);
+
+        return (
+          <div className="space-y-4">
+            <h3 className="text-xl font-bold text-purple-950 text-center">Ingredientes</h3>
+            
+            <div className="max-h-60 overflow-y-auto space-y-3">
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-sm font-semibold text-purple-800">
+                    Ingredientes — {selectedIngredients.length}/{rule.ingredientLimit} incluídos
+                    {Math.max(0, selectedIngredients.length - rule.ingredientLimit) > 0 && 
+                      ` + ${Math.max(0, selectedIngredients.length - rule.ingredientLimit)} extra(s)`
+                    }
+                  </p>
+                  <button
+                    type="button"
+                    onClick={removeLastIngredient}
+                    disabled={selectedIngredients.length === 0}
+                    className="text-xs font-semibold text-red-600 hover:text-red-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    ✕ Remover último
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  {availableIngredients.map((ing) => {
+                    const isSelected = selectedIngredients.some((i) => i.id === ing.id);
+                    const selectedIndex = selectedIngredients.lastIndexOf(ing);
+                    const isExtra = selectedIndex >= rule.ingredientLimit;
+                    const extraPrice = isExtra ? getExtraPrice(ing) : 0;
+                    
+                    return (
+                      <button
+                        key={ing.id}
+                        onClick={() => toggleIngredient(ing)}
+                        className={`p-2 rounded-lg border text-left text-sm transition-all ${
+                          isSelected
+                            ? "border-purple-700 bg-purple-50"
+                            : "border-purple-200 bg-white hover:border-purple-300"
+                        }`}
+                      >
+                        <div className="flex justify-between items-start">
+                          <span className="font-medium">{ing.name}</span>
+                          {isExtra && <span className="text-red-600 text-xs font-bold ml-1">EXTRA +{formatBRL(extraPrice)}</span>}
                         </div>
-                      ) : (
-                        <>
-                          {item.ingredients?.length > 0 && (
-                            <p className="mt-1 text-xs text-purple-500">
-                              Ingredientes:{" "}
-                              {item.ingredients
-                                .map((ingredient) => ingredient.name)
-                                .join(", ")}
-                            </p>
-                          )}
-                          {item.extras?.length > 0 && (
-                            <p className="text-xs text-purple-500">
-                              Ingredientes extras (copinho 100 ml):{" "}
-                              {item.extras.map((extra) => extra.name).join(", ")}
-                            </p>
-                          )}
-                          {item.fruits?.length > 0 && (
-                            <p className="text-xs text-purple-500">
-                              Frutas:{" "}
-                              {item.fruits.map((fruit) => fruit.name).join(", ")}
-                            </p>
-                          )}
-                        </>
-                      )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
 
-                      {item.topping && (
-                        <p className="text-xs text-purple-500">
-                          Cobertura: {item.topping.name}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-sm font-semibold text-purple-800">
+                    Frutas — {selectedFruits.length}/{rule.fruitLimit} incluídas
+                    {Math.max(0, selectedFruits.length - rule.fruitLimit) > 0 && 
+                      ` + ${Math.max(0, selectedFruits.length - rule.fruitLimit)} extra(s)`
+                    }
+                  </p>
+                  <button
+                    type="button"
+                    onClick={removeLastFruit}
+                    disabled={selectedFruits.length === 0}
+                    className="text-xs font-semibold text-red-600 hover:text-red-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    ✕ Remover última
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  {availableFruits.map((fruit) => {
+                    const isSelected = selectedFruits.some((i) => i.id === fruit.id);
+                    const selectedFruitIndex = selectedFruits.lastIndexOf(fruit);
+                    const isExtra = selectedFruitIndex >= rule.fruitLimit;
+                    const extraPrice = isExtra ? getExtraPrice(fruit) : 0;
+                    
+                    return (
+                      <button
+                        key={fruit.id}
+                        onClick={() => toggleFruit(fruit)}
+                        className={`p-2 rounded-lg border text-left text-sm transition-all ${
+                          isSelected
+                            ? "border-purple-700 bg-purple-50"
+                            : "border-purple-200 bg-white hover:border-purple-300"
+                        }`}
+                      >
+                        <div className="flex justify-between items-start">
+                          <span className="font-medium">{fruit.name}</span>
+                          {isExtra && <span className="text-red-600 text-xs font-bold ml-1">EXTRA +{formatBRL(extraPrice)}</span>}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div>
+                <p className="text-sm font-semibold text-purple-800 mb-2">Cobertura</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {TOPPING_OPTIONS.map((option) => (
+                    <button
+                      key={option.id}
+                      onClick={() => setSelectedTopping(option)}
+                      className={`p-2 rounded-lg border text-left text-sm transition-all ${
+                        selectedTopping?.id === option.id
+                          ? "border-purple-700 bg-purple-50"
+                          : "border-purple-200 bg-white hover:border-purple-300"
+                      }`}
+                    >
+                      <span className="font-medium">{option.name}</span>
+                      {selectedTopping?.id === option.id && <span className="ml-1">✓</span>}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-xl bg-purple-50 p-3 text-sm text-purple-800 space-y-1">
+              {totalExtras > 0 && <p>{totalExtras} item(ns) extra(s): +{formatBRL(extrasPrice)}</p>}
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => { setSelectedSize(null); setStep("size"); }}
+                className="flex-1 py-3 rounded-xl border border-purple-300 text-purple-700 font-semibold hover:bg-purple-50"
+              >
+                ← Voltar
+              </button>
+              <button
+                onClick={addItemToCart}
+                className="flex-1 py-3 rounded-xl bg-purple-800 text-white font-bold hover:bg-purple-900"
+              >
+                ➕ Adicionar à comanda
+              </button>
+            </div>
+          </div>
+        );
+
+      case "payment":
+        return (
+          <div className="space-y-4">
+            <h3 className="text-xl font-bold text-purple-950 text-center">Forma de pagamento</h3>
+            <div className="grid grid-cols-2 gap-3">
+              {["Pix", "Dinheiro", "Cartão de crédito", "Cartão de débito"].map((method) => (
+                <button
+                  key={method}
+                  onClick={() => setPaymentMethod(method)}
+                  className={`p-4 rounded-2xl border-2 transition-all text-center ${
+                    paymentMethod === method
+                      ? "border-purple-700 bg-purple-50"
+                      : "border-purple-200 bg-white hover:border-purple-500 hover:bg-purple-50"
+                  }`}
+                >
+                  <div className="text-2xl mb-1">
+                    {method === "Pix" ? "📱" : method === "Dinheiro" ? "💵" : "💳"}
+                  </div>
+                  <div className="font-bold text-purple-950 text-sm">{method}</div>
+                </button>
+              ))}
+            </div>
+            
+            <div className="text-center py-4">
+              <div className="text-3xl font-black text-purple-950">{formatBRL(total)}</div>
+              <div className="text-sm text-purple-600">TOTAL</div>
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => { setPaymentMethod(""); setStep("product"); }}
+                className="flex-1 py-3 rounded-xl border border-purple-300 text-purple-700 font-semibold hover:bg-purple-50"
+              >
+                ← Voltar
+              </button>
+              <button
+                onClick={() => setStep("confirm")}
+                disabled={!paymentMethod || items.length === 0}
+                className="flex-1 py-3 rounded-xl bg-green-600 text-white font-bold hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                ✅ Finalizar comanda
+              </button>
+            </div>
+          </div>
+        );
+
+      case "confirm":
+        return (
+          <div className="space-y-4">
+            <h3 className="text-xl font-bold text-purple-950 text-center">Confirmar pedido</h3>
+            
+            <div className="bg-purple-50 rounded-2xl p-4 space-y-3">
+              <div className="flex justify-between items-center">
+                <span className="font-semibold text-purple-950">Tipo:</span>
+                <span className="text-purple-800">
+                  {selectedType === "local" ? "Comer no local" : selectedType === "levar" ? "Para levar" : "Delivery"}
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="font-semibold text-purple-950">Pagamento:</span>
+                <span className="text-purple-800">{paymentMethod}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="font-semibold text-purple-950">Total:</span>
+                <span className="font-black text-purple-950 text-xl">{formatBRL(total)}</span>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <h4 className="font-semibold text-purple-950">Itens:</h4>
+              {items.map((item) => (
+                <div key={item.id} className="bg-white rounded-xl p-3 border border-purple-100">
+                  <div className="flex justify-between items-start mb-2">
+                    <div className="flex-1">
+                      <p className="font-bold text-purple-950">{itemLabel(item.category, item.size)}</p>
+                      <p className="text-xs text-purple-500 mt-1">
+                        {[...item.ingredients, ...item.fruits].map((i) => i.name).join(", ")}
+                      </p>
+                      {item.calculation.ingredientExtraCount > 0 && (
+                        <p className="text-xs text-red-600">
+                          {item.calculation.ingredientExtraCount} extra(s): +{formatBRL(item.calculation.ingredientExtraPrice)}
+                        </p>
+                      )}
+                      {item.calculation.fruitExtraCount > 0 && (
+                        <p className="text-xs text-red-600">
+                          {item.calculation.fruitExtraCount} fruta(s) extra(s): +{formatBRL(item.calculation.fruitExtraPrice)}
                         </p>
                       )}
                     </div>
-
-                    <button
-                      onClick={() => removeItem(item.id)}
-                      className="rounded-lg p-1.5 text-red-500 hover:bg-red-50"
-                      title="Remover produto"
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
-
-                  <div className="mt-3 flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => changeQty(item.id, -1)}
-                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-purple-200 text-purple-700"
-                      >
-                        <Minus size={14} />
-                      </button>
-
-                      <span className="w-6 text-center text-sm font-bold">
-                        {item.qty}
-                      </span>
-
-                      <button
-                        onClick={() => changeQty(item.id, 1)}
-                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-purple-200 text-purple-700"
-                      >
-                        <Plus size={14} />
-                      </button>
-                    </div>
-
-                    <span className="font-bold text-purple-950">
-                      {formatBRL(
-                        (Number(item.finalPrice) || 0) *
-                          (Number(item.qty) || 1)
-                      )}
-                    </span>
+                    <span className="font-bold text-purple-950">{formatBRL(item.finalPrice * item.qty)}</span>
                   </div>
                 </div>
               ))}
             </div>
-          )}
-        </div>
-      </Modal>
 
-      {addModal && (
-        <AddProductModal
-          category={addModal.category}
-          size={addModal.size}
-          prices={prices}
-          ingredients={ingredients}
-          ingredientOrder={ingredientOrder}
-          fruitOrder={fruitOrder}
-          onClose={() => setAddModal(null)}
-          onConfirm={addItem}
-          fruitOptions={fruitOptions}
-          excessPrice={excessPrice}
-        />
-      )}
-    </>
+            <div className="flex gap-2">
+              <button
+                onClick={() => { setPaymentMethod(""); setStep("payment"); }}
+                className="flex-1 py-3 rounded-xl border border-purple-300 text-purple-700 font-semibold hover:bg-purple-50"
+              >
+                ← Voltar
+              </button>
+              <button
+                onClick={finalizeOrder}
+                disabled={!paymentMethod || items.length === 0}
+                className="flex-1 py-3 rounded-xl bg-green-600 text-white font-bold hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                ✅ Confirmar pedido — {formatBRL(total)}
+              </button>
+            </div>
+          </div>
+        );
+
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <Modal
+      title="🛒 Novo pedido balcão"
+      onClose={onClose}
+      wide={step === "ingredients"}
+    >
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Coluna da esquerda - Montagem do pedido */}
+        <div className="lg:col-span-2">
+          {renderStep()}
+        </div>
+
+        {/* Coluna da direita - Comanda */}
+        <div className="lg:col-span-1">
+          <div className="bg-purple-50 rounded-2xl p-4 sticky top-4">
+            <div className="flex items-center justify-between mb-4">
+              <h4 className="font-bold text-purple-950">COMANDA</h4>
+              {items.length > 0 && (
+                <button
+                  onClick={clearCart}
+                  className="text-red-600 text-sm font-semibold hover:text-red-700"
+                >
+                  🗑️ Limpar
+                </button>
+              )}
+            </div>
+
+            {items.length === 0 ? (
+              <div className="text-center py-8 text-purple-400">
+                <ShoppingCart className="mx-auto mb-2" size={24} />
+                <p className="text-sm">Nenhum item</p>
+              </div>
+            ) : (
+              <div className="space-y-3 max-h-96 overflow-y-auto">
+                {items.map((item) => (
+                  <div key={item.id} className="bg-white rounded-xl p-3 border border-purple-100">
+                    <div className="flex justify-between items-start mb-2">
+                      <div className="flex-1">
+                        <p className="font-bold text-purple-950 text-sm">{itemLabel(item.category, item.size)}</p>
+                        <p className="text-xs text-purple-500 mt-1">
+                          {[...item.ingredients, ...item.fruits].map((i) => i.name).join(", ")}
+                        </p>
+                        {item.calculation.ingredientExtraCount > 0 && (
+                          <p className="text-xs text-red-600">
+                            +{item.calculation.ingredientExtraCount} extra(s)
+                          </p>
+                        )}
+                        {item.calculation.fruitExtraCount > 0 && (
+                          <p className="text-xs text-red-600">
+                            +{item.calculation.fruitExtraCount} fruta(s) extra(s)
+                          </p>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => removeItem(item.id)}
+                        className="text-red-500 hover:text-red-700"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => changeQty(item.id, -1)}
+                          className="w-6 h-6 rounded bg-purple-100 text-purple-700 flex items-center justify-center"
+                        >
+                          <Minus size={12} />
+                        </button>
+                        <span className="text-sm font-bold w-4 text-center">{item.qty}</span>
+                        <button
+                          onClick={() => changeQty(item.id, 1)}
+                          className="w-6 h-6 rounded bg-purple-100 text-purple-700 flex items-center justify-center"
+                        >
+                          <Plus size={12} />
+                        </button>
+                      </div>
+                      <span className="font-bold text-purple-950 text-sm">
+                        {formatBRL(item.finalPrice * item.qty)}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="mt-4 pt-4 border-t border-purple-200">
+              <div className="flex justify-between items-center mb-3">
+                <span className="font-bold text-purple-950">TOTAL</span>
+                <span className="font-black text-purple-950 text-xl">{formatBRL(total)}</span>
+              </div>
+
+              {items.length > 0 && step !== "payment" && step !== "confirm" && (
+                <button
+                  onClick={() => setStep("payment")}
+                  className="w-full py-3 rounded-xl bg-purple-800 text-white font-bold hover:bg-purple-900"
+                >
+                  ✅ Finalizar comanda
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </Modal>
   );
 }
-
 
 function AdminOrdersTab({ orders, setOrders, showFinance = false }) {
   const paymentOptions = ["Pix", "Dinheiro", "Cartão de crédito", "Cartão de débito", "Não informado"];
