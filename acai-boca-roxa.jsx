@@ -1119,7 +1119,7 @@ function generatePixPayload(amount) {
 
   const merchantAccountInformation =
     pixField("00", "br.gov.bcb.pix") +
-    pixField("01", "06538583105");
+    pixField("01", "+5561991722946");
 
   const payload =
     pixField("00", "01") +
@@ -1433,7 +1433,7 @@ function CheckoutModal({ cart, prices, config, deliveryStatus, onClose, onSent }
       </p>
 
       <p className="mt-2 text-xs text-emerald-800">
-        Chave PIX (CPF): 06538583105
+        Chave PIX: +5561991722946
       </p>
 
 <button
@@ -1509,7 +1509,7 @@ function Contact({ config }) {
           <a href={`https://wa.me/${config.whatsapp}`} target="_blank" rel="noreferrer" className="flex items-center gap-3 bg-white rounded-2xl p-4 border border-purple-100 hover:border-purple-300 transition-colors">
             <MessageCircle className="text-purple-700" /><div><p className="font-semibold text-purple-950">WhatsApp</p><p className="text-sm text-purple-500">Peça diretamente por lá</p></div>
           </a>
-          <a href="#" className="flex items-center gap-3 bg-white rounded-2xl p-4 border border-purple-100 hover:border-purple-300 transition-colors">
+          <a href="https://www.instagram.com/acaibocaroxa.bsb/" target="_blank" rel="noreferrer" className="flex items-center gap-3 bg-white rounded-2xl p-4 border border-purple-100 hover:border-purple-300 transition-colors">
             <Camera className="text-purple-700" /><div><p className="font-semibold text-purple-950">Instagram</p><p className="text-sm text-purple-500">{config.instagram}</p></div>
           </a>
           <div className="flex items-center gap-3 bg-white rounded-2xl p-4 border border-purple-100">
@@ -1539,7 +1539,7 @@ function Footer({ config, onNav }) {
           <button onClick={() => onNav("contato")} className="hover:text-white">Contato</button>
         </div>
         <div className="flex items-center gap-3">
-          <a href="#" className="w-9 h-9 rounded-full bg-purple-900 flex items-center justify-center hover:bg-purple-800"><Camera size={16} /></a>
+          <a href="https://www.instagram.com/acaibocaroxa.bsb/" target="_blank" rel="noreferrer" className="w-9 h-9 rounded-full bg-purple-900 flex items-center justify-center hover:bg-purple-800"><Camera size={16} /></a>
           <a href={`https://wa.me/${config.whatsapp}`} target="_blank" rel="noreferrer" className="w-9 h-9 rounded-full bg-purple-900 flex items-center justify-center hover:bg-purple-800"><MessageCircle size={16} /></a>
         </div>
       </div>
