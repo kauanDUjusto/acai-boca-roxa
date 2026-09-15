@@ -2774,6 +2774,10 @@ function AdminOrdersTab({ orders, setOrders, showFinance = false }) {
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   });
   const [financeTab, setFinanceTab] = useState("resumo");
+  const [statusFilter, setStatusFilter] = useState("todos");
+  const [financeRange, setFinanceRange] = useState("today");
+  const [customRangeStart, setCustomRangeStart] = useState(() => saoPauloRelativeDateKey(-6));
+  const [customRangeEnd, setCustomRangeEnd] = useState(() => saoPauloDateKey(new Date()));
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [counter, setCounter] = useState(EMPTY_COUNTER_REGISTER);
   const [counterLoading, setCounterLoading] = useState(false);
@@ -2788,26 +2792,6 @@ function AdminOrdersTab({ orders, setOrders, showFinance = false }) {
   const filteredOrders = showAllOrders
     ? sorted
     : sorted.filter((order) => saoPauloDateKey(order.createdAt) === selectedDate);
-
-  // Resumo do período selecionado
-  const periodSummary = filteredOrders.reduce((result, order) => {
-    const payment = paymentOptions.includes(order.paymentMethod) ? order.paymentMethod : "Não informado";
-    result.total += Number(order.total) || 0;
-    result.payments[payment].count += 1;
-    result.payments[payment].total += Number(order.total) || 0;
-    result.totalOrders += 1;
-    if (order.status === "concluido") result.completedOrders += 1;
-    if (order.status === "novo" || order.status === "preparando" || order.status === "aguardando_motoboy" || order.status === "a_caminho") result.openOrders += 1;
-    return result;
-  }, {
-    total: 0,
-    totalOrders: 0,
-    completedOrders: 0,
-    openOrders: 0,
-    payments: Object.fromEntries(paymentOptions.map((payment) => [payment, { count: 0, total: 0 }])),
-  });
-
-  const averageTicket = periodSummary.totalOrders > 0 ? periodSummary.total / periodSummary.totalOrders : 0;
 
   // Resumo mensal
   const monthlyOrders = sorted.filter((order) => {
@@ -2856,7 +2840,135 @@ function AdminOrdersTab({ orders, setOrders, showFinance = false }) {
   const counterTotal = counterRows.reduce((total, [, , totalKey]) => total + (Number(counter[totalKey]) || 0), 0);
   const generalSales = dailyOrders.length + counterSales;
   const generalTotal = summary.total + counterTotal;
-  const ordersToDisplay = showFinance ? (financeTab === "resumo" ? dailyOrders : []) : filteredOrders;
+  const statusFilters = [
+    ["todos", "Todos"],
+    ["novo", "Novos"],
+    ["preparando", "Preparando"],
+    ["aguardando_motoboy", "Aguardando motoboy"],
+    ["a_caminho", "A caminho"],
+    ["concluido", "Concluídos"],
+  ];
+  const statusSummary = filteredOrders.reduce((acc, order) => {
+    acc.total += 1;
+    if (order.status === "novo") acc.novo += 1;
+    if (order.status === "preparando" || order.status === "aguardando_motoboy" || order.status === "a_caminho") acc.emAndamento += 1;
+    if (order.status === "concluido") acc.concluido += 1;
+    return acc;
+  }, { total: 0, novo: 0, emAndamento: 0, concluido: 0 });
+
+  const todayDateKey = saoPauloDateKey(new Date());
+  const customRangeInvalid = financeRange === "customRange" && customRangeStart > customRangeEnd;
+  const financeRangeStartKey = financeRange === "7d"
+    ? saoPauloRelativeDateKey(-6)
+    : financeRange === "30d"
+      ? saoPauloRelativeDateKey(-29)
+      : financeRange === "customRange"
+        ? customRangeStart
+        : todayDateKey;
+  const financeRangeEndKey = financeRange === "customRange" ? customRangeEnd : todayDateKey;
+  const financeRangeOrders = customRangeInvalid
+    ? []
+    : financeRange === "7d" || financeRange === "30d" || financeRange === "customRange"
+      ? sorted.filter((order) => {
+          const key = saoPauloDateKey(order.createdAt);
+          return key >= financeRangeStartKey && key <= financeRangeEndKey;
+        })
+      : sorted.filter((order) => saoPauloDateKey(order.createdAt) === selectedDate);
+
+  const ordersToDisplay = showFinance
+    ? (financeTab === "resumo" ? financeRangeOrders : [])
+    : (statusFilter === "todos" ? filteredOrders : filteredOrders.filter((order) => order.status === statusFilter));
+
+  const formatShortDateKey = (key) => (key ? key.split("-").reverse().slice(0, 2).join("/") : "");
+  const financeRangeLabel = financeRange === "7d" ? "Últimos 7 dias" : financeRange === "30d" ? "Últimos 30 dias" : financeRange === "today" ? "Hoje" : financeRange === "customRange" ? `Período personalizado: ${formatShortDateKey(customRangeStart)} a ${formatShortDateKey(customRangeEnd)}` : `Dia ${formatShortDateKey(selectedDate)}`;
+
+  const rangeStats = financeRangeOrders.reduce((result, order) => {
+    const payment = paymentOptions.includes(order.paymentMethod) ? order.paymentMethod : "Não informado";
+    result.total += Number(order.total) || 0;
+    result.count += 1;
+    result.products += Number(order.subtotal) || 0;
+    result.delivery += Number(order.deliveryFee) || 0;
+    result.payments[payment].count += 1;
+    result.payments[payment].total += Number(order.total) || 0;
+    return result;
+  }, {
+    total: 0,
+    count: 0,
+    products: 0,
+    delivery: 0,
+    payments: Object.fromEntries(paymentOptions.map((payment) => [payment, { count: 0, total: 0 }])),
+  });
+  const rangeAverageTicket = rangeStats.count > 0 ? rangeStats.total / rangeStats.count : 0;
+
+  const byDaySales = (() => {
+    const map = new Map();
+    for (const order of financeRangeOrders) {
+      const key = saoPauloDateKey(order.createdAt);
+      const row = map.get(key) || { date: key, count: 0, total: 0 };
+      row.count += 1;
+      row.total += Number(order.total) || 0;
+      map.set(key, row);
+    }
+    return [...map.values()].sort((a, b) => b.date.localeCompare(a.date));
+  })();
+
+  const topProducts = (() => {
+    const map = new Map();
+    for (const order of financeRangeOrders) {
+      for (const item of order.items || []) {
+        const label = itemLabel(item.category, item.size);
+        const row = map.get(label) || { label, qty: 0, total: 0 };
+        const qty = Number(item.qty) || 1;
+        row.qty += qty;
+        row.total += (Number(item.finalPrice) || Number(item.calculation?.total) || 0) * qty;
+        map.set(label, row);
+      }
+    }
+    return [...map.values()].sort((a, b) => b.qty - a.qty).slice(0, 8);
+  })();
+
+  const shortId = (id) => (id ? id.slice(0, 8) : id);
+  const orderTimeLabel = (iso) => (iso ? new Date(iso).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "Data não informada");
+  const statusPill = (status) => {
+    const styles = {
+      novo: "bg-amber-100 text-amber-700",
+      preparando: "bg-blue-100 text-blue-700",
+      aguardando_motoboy: "bg-orange-100 text-orange-700",
+      a_caminho: "bg-purple-100 text-purple-700",
+      concluido: "bg-emerald-100 text-emerald-700",
+    };
+    const labels = {
+      novo: "Novo",
+      preparando: "Preparando",
+      aguardando_motoboy: "Aguardando motoboy",
+      a_caminho: "A caminho",
+      concluido: "Concluído",
+    };
+    return (
+      <span className={`inline-block shrink-0 text-xs font-semibold px-3 py-1 rounded-full ${styles[status] || "bg-gray-100 text-gray-700"}`}>
+        {labels[status] || status}
+      </span>
+    );
+  };
+  const statusActions = (order) => {
+    if (!order) return null;
+    if (order.status === "novo") {
+      return <button onClick={() => setOrderStatus(order.id, "preparando")} className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg border border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-colors"><Check size={14} /> Aceitar pedido</button>;
+    }
+    if (order.status === "preparando") {
+      return <button onClick={() => setOrderStatus(order.id, "aguardando_motoboy")} className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg border border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100 transition-colors"><Check size={14} /> Pedido pronto</button>;
+    }
+    if (order.status === "aguardando_motoboy") {
+      return <button onClick={() => setOrderStatus(order.id, "a_caminho")} className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg border border-purple-200 text-purple-700 bg-purple-50 hover:bg-purple-100 transition-colors">🚗 Dar saída</button>;
+    }
+    if (order.status === "a_caminho") {
+      return <button onClick={() => setOrderStatus(order.id, "concluido")} className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg border border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-colors"><Check size={14} /> Entregue</button>;
+    }
+    if (order.status === "concluido") {
+      return <span className="text-xs font-semibold text-emerald-600 px-2 py-1">✓ Pedido concluído</span>;
+    }
+    return null;
+  };
 
   useEffect(() => {
     if (!showFinance) return undefined;
@@ -3010,6 +3122,12 @@ function AdminOrdersTab({ orders, setOrders, showFinance = false }) {
       )
     );
 
+    setSelectedOrder((prev) =>
+      prev && prev.id === id
+        ? { ...prev, ...updateData }
+        : prev
+    );
+
     console.log("Estado local atualizado");
   };
 
@@ -3044,11 +3162,30 @@ function AdminOrdersTab({ orders, setOrders, showFinance = false }) {
   return (
     <div className="space-y-4">
       {!showFinance && (
-        <section className="rounded-2xl border border-purple-100 bg-white p-4 space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
+        <section className="space-y-4">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+              <p className="text-xs font-bold uppercase tracking-wide text-amber-600">Pedidos novos</p>
+              <p className="mt-1 text-3xl font-black text-amber-900">{statusSummary.novo}</p>
+            </div>
+            <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4">
+              <p className="text-xs font-bold uppercase tracking-wide text-blue-600">Em andamento</p>
+              <p className="mt-1 text-3xl font-black text-blue-900">{statusSummary.emAndamento}</p>
+            </div>
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+              <p className="text-xs font-bold uppercase tracking-wide text-emerald-600">Concluídos</p>
+              <p className="mt-1 text-3xl font-black text-emerald-900">{statusSummary.concluido}</p>
+            </div>
+            <div className="rounded-2xl border border-purple-200 bg-purple-50 p-4">
+              <p className="text-xs font-bold uppercase tracking-wide text-purple-600">Total de pedidos</p>
+              <p className="mt-1 text-3xl font-black text-purple-900">{statusSummary.total}</p>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-purple-100 bg-white p-4 space-y-3">
             <div>
-              <p className="text-xs font-bold uppercase tracking-wide text-purple-500">Filtro de pedidos</p>
-              <div className="flex gap-2 mt-2">
+              <p className="text-xs font-bold uppercase tracking-wide text-purple-500">Filtros por data</p>
+              <div className="flex flex-wrap gap-2 mt-2">
                 <button
                   onClick={() => {
                     setShowAllOrders(false);
@@ -3084,65 +3221,14 @@ function AdminOrdersTab({ orders, setOrders, showFinance = false }) {
                 </button>
               </div>
             </div>
-          </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 rounded-xl bg-purple-50 p-4">
-            <div className="text-center">
-              <p className="text-xs text-purple-600">Pedidos</p>
-              <p className="text-lg font-bold text-purple-950">{periodSummary.totalOrders}</p>
-            </div>
-            <div className="text-center">
-              <p className="text-xs text-purple-600">Faturamento</p>
-              <p className="text-lg font-bold text-purple-950">{formatBRL(periodSummary.total)}</p>
-            </div>
-            <div className="text-center">
-              <p className="text-xs text-purple-600">Ticket médio</p>
-              <p className="text-lg font-bold text-purple-950">{formatBRL(averageTicket)}</p>
-            </div>
-            <div className="text-center">
-              <p className="text-xs text-purple-600">Status</p>
-              <p className="text-sm font-bold text-purple-950">
-                {periodSummary.completedOrders} concluídos · {periodSummary.openOrders} em andamento
-              </p>
-            </div>
-          </div>
-        </section>
-      )}
-
-      {!showFinance && (
-        <section className="rounded-2xl border border-purple-100 bg-white p-4 space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <p className="text-xs font-bold uppercase tracking-wide text-purple-500">Resumo do mês</p>
-              <div className="flex gap-2 mt-2 items-center">
-                <input
-                  type="month"
-                  value={selectedMonth}
-                  onChange={(event) => setSelectedMonth(event.target.value)}
-                  className="rounded-lg border border-purple-200 px-3 py-2 text-xs text-purple-900"
-                />
+              <p className="text-xs font-bold uppercase tracking-wide text-purple-500">Status</p>
+              <div className="flex flex-wrap gap-2 mt-2">
+                {statusFilters.map(([id, label]) => (
+                  <button key={id} onClick={() => setStatusFilter(id)} className={`rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${statusFilter === id ? "border-purple-800 bg-purple-800 text-white" : "border-purple-200 text-purple-700 hover:bg-purple-50"}`}>{label}</button>
+                ))}
               </div>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 rounded-xl bg-emerald-50 p-4">
-            <div className="text-center">
-              <p className="text-xs text-emerald-600">Pedidos no mês</p>
-              <p className="text-lg font-bold text-emerald-950">{monthlySummary.totalOrders}</p>
-            </div>
-            <div className="text-center">
-              <p className="text-xs text-emerald-600">Faturamento</p>
-              <p className="text-lg font-bold text-emerald-950">{formatBRL(monthlySummary.total)}</p>
-            </div>
-            <div className="text-center">
-              <p className="text-xs text-emerald-600">Ticket médio</p>
-              <p className="text-lg font-bold text-emerald-950">{formatBRL(monthlyAverageTicket)}</p>
-            </div>
-            <div className="text-center">
-              <p className="text-xs text-emerald-600">Status</p>
-              <p className="text-sm font-bold text-emerald-950">
-                {monthlySummary.completedOrders} concluídos · {monthlySummary.openOrders} em andamento
-              </p>
             </div>
           </div>
         </section>
@@ -3156,35 +3242,122 @@ function AdminOrdersTab({ orders, setOrders, showFinance = false }) {
         </div>
       )}
       {showFinance && financeTab === "resumo" && (
-      <section className="rounded-2xl border border-purple-100 bg-white p-5 space-y-4">
+      <section className="rounded-2xl border border-purple-100 bg-white p-5 space-y-5">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <p className="text-xs font-bold uppercase tracking-wide text-purple-500">Relatório de vendas</p>
-            <label className="mt-1 block text-sm font-semibold text-purple-950">Data das vendas</label>
-            <input type="date" value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} className="mt-1 rounded-xl border border-purple-200 px-3 py-2 text-sm text-purple-900" />
+            <p className="mt-1 text-lg font-black text-purple-950">{financeRangeLabel}</p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <button
-              onClick={() => setSelectedDate(saoPauloDateKey(new Date()))}
-              aria-pressed={selectedDate === saoPauloDateKey(new Date())}
-              className={`rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${selectedDate === saoPauloDateKey(new Date()) ? "border-purple-800 bg-purple-800 text-white" : "border-purple-200 text-purple-700 hover:bg-purple-50"}`}
+              onClick={() => { setFinanceRange("today"); setSelectedDate(saoPauloDateKey(new Date())); }}
+              aria-pressed={financeRange === "today"}
+              className={`rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${financeRange === "today" ? "border-purple-800 bg-purple-800 text-white" : "border-purple-200 text-purple-700 hover:bg-purple-50"}`}
             >Hoje</button>
             <button
-              onClick={() => setSelectedDate(saoPauloRelativeDateKey(-1))}
-              aria-pressed={selectedDate === saoPauloRelativeDateKey(-1)}
-              className={`rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${selectedDate === saoPauloRelativeDateKey(-1) ? "border-purple-800 bg-purple-800 text-white" : "border-purple-200 text-purple-700 hover:bg-purple-50"}`}
+              onClick={() => { setFinanceRange("custom"); setSelectedDate(saoPauloRelativeDateKey(-1)); }}
+              aria-pressed={financeRange === "custom" && selectedDate === saoPauloRelativeDateKey(-1)}
+              className={`rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${financeRange === "custom" && selectedDate === saoPauloRelativeDateKey(-1) ? "border-purple-800 bg-purple-800 text-white" : "border-purple-200 text-purple-700 hover:bg-purple-50"}`}
             >Ontem</button>
+            <button
+              onClick={() => setFinanceRange("7d")}
+              aria-pressed={financeRange === "7d"}
+              className={`rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${financeRange === "7d" ? "border-purple-800 bg-purple-800 text-white" : "border-purple-200 text-purple-700 hover:bg-purple-50"}`}
+            >7 dias</button>
+            <button
+              onClick={() => setFinanceRange("30d")}
+              aria-pressed={financeRange === "30d"}
+              className={`rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${financeRange === "30d" ? "border-purple-800 bg-purple-800 text-white" : "border-purple-200 text-purple-700 hover:bg-purple-50"}`}
+            >30 dias</button>
+            <button
+              onClick={() => setFinanceRange("customRange")}
+              aria-pressed={financeRange === "customRange"}
+              className={`rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${financeRange === "customRange" ? "border-purple-800 bg-purple-800 text-white" : "border-purple-200 text-purple-700 hover:bg-purple-50"}`}
+            >Período personalizado</button>
+            <input
+              type="date"
+              value={selectedDate}
+              onChange={(event) => { setFinanceRange("custom"); setSelectedDate(event.target.value); }}
+              className="rounded-lg border border-purple-200 px-3 py-2 text-xs text-purple-900"
+            />
           </div>
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {[["Pedidos", dailyOrders.length], ["Produtos", formatBRL(summary.products)], ["Delivery", formatBRL(summary.delivery)], ["Total vendido", formatBRL(summary.total)]].map(([label, value]) => (
-            <div key={label} className="rounded-xl bg-purple-50 p-3"><p className="text-xs text-purple-500">{label}</p><p className="mt-1 font-bold text-purple-950">{value}</p></div>
-          ))}
+
+        {financeRange === "customRange" && (
+          <div className="rounded-xl border border-purple-100 bg-purple-50/50 p-4 space-y-3">
+            <div className="flex flex-wrap items-end gap-x-4 gap-y-3">
+              <label className="block">
+                <span className="block text-xs font-semibold text-purple-600">De</span>
+                <input type="date" value={customRangeStart} onChange={(event) => setCustomRangeStart(event.target.value)} className="mt-1 rounded-lg border border-purple-200 px-3 py-2 text-xs text-purple-900" />
+              </label>
+              <label className="block">
+                <span className="block text-xs font-semibold text-purple-600">Até</span>
+                <input type="date" value={customRangeEnd} onChange={(event) => setCustomRangeEnd(event.target.value)} className="mt-1 rounded-lg border border-purple-200 px-3 py-2 text-xs text-purple-900" />
+              </label>
+              <p className="pb-2 text-xs text-purple-500">O período inclui o primeiro e o último dia selecionados.</p>
+            </div>
+            {customRangeInvalid && (
+              <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
+                A data inicial é maior que a data final. Ajuste as datas para corrigir e atualizar o relatório.
+              </p>
+            )}
+          </div>
+        )}
+
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+          <div className="rounded-xl bg-purple-50 p-4"><p className="text-xs text-purple-500">Faturamento do período</p><p className="mt-1 text-2xl font-black text-purple-950">{formatBRL(rangeStats.total)}</p></div>
+          <div className="rounded-xl bg-purple-50 p-4"><p className="text-xs text-purple-500">Vendas no período</p><p className="mt-1 text-2xl font-black text-purple-950">{rangeStats.count}</p></div>
+          <div className="rounded-xl bg-purple-50 p-4"><p className="text-xs text-purple-500">Ticket médio</p><p className="mt-1 text-2xl font-black text-purple-950">{formatBRL(rangeAverageTicket)}</p></div>
         </div>
-        <div>
-          <p className="font-bold text-purple-950">Formas de pagamento</p>
-          <div className="mt-2 grid sm:grid-cols-2 gap-2">
-            {paymentOptions.map((payment) => <div key={payment} className="flex items-center justify-between rounded-lg border border-purple-100 px-3 py-2 text-sm"><span>{payment}</span><span className="font-semibold">{summary.payments[payment].count} pedidos — {formatBRL(summary.payments[payment].total)}</span></div>)}
+
+        <div className="flex flex-wrap gap-3">
+          <div className="rounded-lg border border-purple-100 bg-purple-50/50 px-3 py-2 text-sm"><span className="text-purple-500">Valor em produtos (açaí)</span> <strong className="text-purple-950">{formatBRL(rangeStats.products)}</strong></div>
+          <div className="rounded-lg border border-purple-100 bg-purple-50/50 px-3 py-2 text-sm"><span className="text-purple-500">Taxa de entrega</span> <strong className="text-purple-950">{formatBRL(rangeStats.delivery)}</strong></div>
+        </div>
+
+        <div className="grid gap-4 lg:grid-cols-2">
+          <div className="rounded-xl border border-purple-100 p-4">
+            <p className="font-bold text-purple-950">Faturamento por dia</p>
+            {byDaySales.length === 0 && <p className="mt-2 text-sm text-purple-400">Sem vendas no período.</p>}
+            <div className="mt-3 space-y-2">
+              {byDaySales.map((row) => (
+                <div key={row.date} className="flex items-center justify-between gap-2 rounded-lg bg-purple-50/60 px-3 py-2 text-sm">
+                  <div>
+                    <p className="font-semibold text-purple-950">{formatShortDateKey(row.date)}</p>
+                    <p className="text-xs text-purple-500">{row.count} pedido(s)</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-bold text-purple-950">{formatBRL(row.total)}</p>
+                    <p className="text-xs text-purple-500">Ticket: {formatBRL(row.count ? row.total / row.count : 0)}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="space-y-4">
+            <div className="rounded-xl border border-purple-100 p-4">
+              <p className="font-bold text-purple-950">Formas de pagamento</p>
+              <div className="mt-3 space-y-2">
+                {paymentOptions.map((payment) => (
+                  <div key={payment} className="flex items-center justify-between gap-2 rounded-lg border border-purple-100 px-3 py-2 text-sm">
+                    <span>{payment}</span>
+                    <span className="font-semibold text-purple-900">{rangeStats.payments[payment].count} pedidos — {formatBRL(rangeStats.payments[payment].total)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="rounded-xl border border-purple-100 p-4">
+              <p className="font-bold text-purple-950">Produtos mais vendidos</p>
+              {topProducts.length === 0 && <p className="mt-2 text-sm text-purple-400">Sem dados no período.</p>}
+              <div className="mt-3 space-y-2">
+                {topProducts.map((product, index) => (
+                  <div key={product.label} className="flex items-center justify-between gap-2 rounded-lg border border-purple-100 px-3 py-2 text-sm">
+                    <span className="min-w-0"><span className="font-bold text-purple-400">{index + 1}.</span> <span className="font-semibold text-purple-950">{product.label}</span> <span className="text-xs text-purple-500">×{product.qty}</span></span>
+                    <span className="font-bold text-purple-950">{formatBRL(product.total)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -3253,112 +3426,75 @@ function AdminOrdersTab({ orders, setOrders, showFinance = false }) {
         </div>
       </section>
       )}
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-xs font-bold uppercase tracking-wide text-purple-500">{showFinance && financeTab === "resumo" ? "Pedidos do período" : "Pedidos"}</p>
+        {(showFinance && financeTab === "resumo" || !showFinance) && (
+          <p className="text-xs text-purple-400">{ordersToDisplay.length} pedido(s)</p>
+        )}
+      </div>
+
       {((showFinance && financeTab === "resumo") || !showFinance) && ordersToDisplay.length === 0 && (
         <p className="text-center text-purple-400 py-10">
           {showAllOrders ? "Nenhum pedido encontrado." : `Nenhum pedido encontrado em ${selectedDate}.`}
         </p>
       )}
-      {ordersToDisplay.map((o) => (
-        <div
-          key={o.id}
-          role="button"
-          tabIndex={0}
-          onClick={() => setSelectedOrder(o)}
-          onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") setSelectedOrder(o); }}
-          className="cursor-pointer bg-white rounded-2xl border border-purple-100 p-4 hover:border-purple-300 transition-colors"
-        >
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-xs text-purple-400">{o.createdAt ? new Date(o.createdAt).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" }) : "Data não informada"}</p>
-            <div className="flex items-center gap-2">
-              <span className={`text-xs font-semibold px-3 py-1 rounded-full ${
-                o.status === "novo" ? "bg-amber-100 text-amber-700" :
-                o.status === "preparando" ? "bg-blue-100 text-blue-700" :
-                o.status === "aguardando_motoboy" ? "bg-orange-100 text-orange-700" :
-                o.status === "a_caminho" ? "bg-purple-100 text-purple-700" :
-                "bg-emerald-100 text-emerald-700"
-              }`}>
-                {o.status === "novo" ? "Novo" :
-                 o.status === "preparando" ? "Preparando" :
-                 o.status === "aguardando_motoboy" ? "Aguardando motoboy" :
-                 o.status === "a_caminho" ? "A caminho" :
-                 "Concluído"}
-              </span>
-              
-              {/* Botões contextuais baseados no status */}
-              {o.status === "novo" && (
-                <button
-                  onClick={(event) => { event.stopPropagation(); setOrderStatus(o.id, "preparando"); }}
-                  className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-colors"
-                >
-                  <Check size={14} /> Aceitar pedido
-                </button>
-              )}
-              
-              {o.status === "preparando" && (
-                <button
-                  onClick={(event) => { event.stopPropagation(); setOrderStatus(o.id, "aguardando_motoboy"); }}
-                  className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100 transition-colors"
-                >
-                  <Check size={14} /> Pedido pronto
-                </button>
-              )}
-              
-              {o.status === "aguardando_motoboy" && (
-                <button
-                  onClick={(event) => { event.stopPropagation(); setOrderStatus(o.id, "a_caminho"); }}
-                  className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border border-purple-200 text-purple-700 bg-purple-50 hover:bg-purple-100 transition-colors"
-                >
-                  🚗 Dar saída
-                </button>
-              )}
-              
-              {o.status === "a_caminho" && (
-                <button
-                  onClick={(event) => { event.stopPropagation(); setOrderStatus(o.id, "concluido"); }}
-                  className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-colors"
-                >
-                  <Check size={14} /> Entregue
-                </button>
-              )}
-              
-              {o.status === "concluido" && (
-                <span className="text-xs font-semibold text-emerald-600 px-2 py-1">✓ Pedido concluído</span>
-              )}
+
+      <div className="space-y-2">
+        {ordersToDisplay.map((o) => (
+          <div
+            key={o.id}
+            className={`w-full flex flex-wrap sm:flex-nowrap items-center gap-x-3 gap-y-2 rounded-2xl border p-2 pr-3 transition-colors ${o.status === "novo" ? "border-amber-300 bg-amber-50/60 hover:border-amber-400" : "border-purple-100 hover:border-purple-300"}`}
+          >
+            <button
+              onClick={() => setSelectedOrder(o)}
+              aria-label={`Abrir pedido ${shortId(o.id)} de ${o.customer.name}`}
+              className="flex min-w-0 flex-1 flex-wrap sm:flex-nowrap items-center gap-x-3 gap-y-1 p-1 text-left rounded-xl"
+            >
+              <span className="w-24 shrink-0 font-mono text-xs font-bold text-purple-500">{shortId(o.id)}</span>
+              <span className="min-w-0 flex-1 truncate text-sm font-semibold text-purple-950">{o.customer.name}</span>
+              <span className="hidden md:inline shrink-0 text-xs text-purple-500">{orderTimeLabel(o.createdAt)}</span>
+              <span className="shrink-0 text-sm font-bold text-purple-950">{formatBRL(o.total)}</span>
+              {statusPill(o.status)}
+              <ChevronRight size={16} className="shrink-0 text-purple-300" />
+            </button>
+            <div className="shrink-0">{statusActions(o)}</div>
+          </div>
+        ))}
+      </div>
+
+      {!showFinance && (
+        <section className="rounded-2xl border border-purple-100 bg-white p-4 space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-xs font-bold uppercase tracking-wide text-purple-500">Resumo do mês</p>
+            <input
+              type="month"
+              value={selectedMonth}
+              onChange={(event) => setSelectedMonth(event.target.value)}
+              className="rounded-lg border border-purple-200 px-3 py-2 text-xs text-purple-900"
+            />
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 rounded-xl bg-emerald-50 p-4">
+            <div className="text-center">
+              <p className="text-xs text-emerald-600">Pedidos no mês</p>
+              <p className="text-lg font-bold text-emerald-950">{monthlySummary.totalOrders}</p>
+            </div>
+            <div className="text-center">
+              <p className="text-xs text-emerald-600">Faturamento</p>
+              <p className="text-lg font-bold text-emerald-950">{formatBRL(monthlySummary.total)}</p>
+            </div>
+            <div className="text-center">
+              <p className="text-xs text-emerald-600">Ticket médio</p>
+              <p className="text-lg font-bold text-emerald-950">{formatBRL(monthlyAverageTicket)}</p>
+            </div>
+            <div className="text-center">
+              <p className="text-xs text-emerald-600">Status</p>
+              <p className="text-sm font-bold text-emerald-950">
+                {monthlySummary.completedOrders} concluídos · {monthlySummary.openOrders} em andamento
+              </p>
             </div>
           </div>
-          <p className="font-semibold text-purple-950">{o.customer.name} · {o.customer.phone}</p>
-          <p className="text-sm text-purple-500">{o.customer.address}</p>
-          {o.deliveryRegion && <p className="text-sm text-purple-500">Entrega: {o.deliveryRegion} · {formatBRL(o.deliveryFee)}</p>}
-          <ul className="text-sm text-purple-700 mt-2 space-y-0.5">
-            {o.items.map((it, idx) => (
-              <li key={idx}>
-                <p>{it.qty}x {itemLabel(it.category, it.size)}</p>
-                {it.layers?.length === 3 ? (
-                  <div className="text-xs">
-                    {[2, 1, 0].map((i) => (
-                      <p key={LAYER_LABELS[i]}>{LAYER_LABELS[i]}: {it.layers[i]?.ingredients?.length ? it.layers[i].ingredients.map((ing) => ing.name).join(", ") : "—"}</p>
-                    ))}
-                    {it.extras?.length > 0 && <p>Ingredientes extras (copinho 100 ml): {it.extras.map((x) => x.name).join(", ")}</p>}
-                    {it.fruits?.length > 0 && <p>Frutas extras (copinho 100 ml): {it.fruits.map((f) => f.name).join(", ")}</p>}
-                  </div>
-                ) : (
-                  <>
-                    {it.ingredients?.length > 0 && <p className="text-xs">Ingredientes: {it.ingredients.map((i) => i.name).join(", ")}</p>}
-                    {it.extras?.length > 0 && <p className="text-xs">Ingredientes extras (copinho 100 ml): {it.extras.map((x) => x.name).join(", ")}</p>}
-                    {it.fruits?.length > 0 && <p className="text-xs">Frutas: {it.fruits.map((fruit) => fruit.name).join(", ")}</p>}
-                  </>
-                )}
-                {it.topping && <p className="text-xs">Cobertura: {it.topping.name}</p>}
-                {it.finalPrice !== undefined && <p className="text-xs">Item: {formatBRL(it.finalPrice)}</p>}
-              </li>
-            ))}
-          </ul>
-          <div className="flex justify-between items-center mt-2 pt-2 border-t border-purple-50">
-            <span className="text-xs text-purple-500">Pagamento: {o.paymentMethod || "Não informado"} · {o.subtotal !== undefined ? `Subtotal ${formatBRL(o.subtotal)} · ` : ""}{o.customer.note || ""}</span>
-            <span className="font-bold text-purple-950">{formatBRL(o.total)}</span>
-          </div>
-        </div>
-      ))}
+        </section>
+      )}
       {selectedOrder && (
         <Modal
           title="Detalhes do pedido"
@@ -3370,6 +3506,13 @@ function AdminOrdersTab({ orders, setOrders, showFinance = false }) {
             </div>
           }
         >
+          <div className="flex flex-wrap items-center gap-3 no-print">
+            <span className="text-xs font-bold uppercase tracking-wide text-purple-500">Status:</span>
+            {statusPill(selectedOrder.status)}
+            <div className="flex flex-wrap gap-2">
+              {statusActions(selectedOrder)}
+            </div>
+          </div>
           <div className="print-order space-y-4 text-purple-950">
             <div className="border-b border-purple-200 pb-3">
               <h1 className="text-xl font-black">Açaí Boca Roxa</h1>
