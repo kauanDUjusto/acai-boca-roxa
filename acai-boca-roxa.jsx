@@ -324,6 +324,43 @@ async function playNewOrderSound() {
     return `${CATEGORY_LABEL[category]} ${size} ml`;
   }
 
+  function getOrderSource(order) {
+    const source = String(order?.orderSource || (order?.deliveryRegion === "Balcão" ? "balcão" : "") || "");
+    if (!source && order?.customer?.address) {
+      const addr = String(order.customer.address).toLowerCase();
+      if (addr.includes("comer no local") || addr.includes("para levar") || addr === "delivery" || addr === "balcão") return "balcão";
+      if (addr.includes("retirada")) return "retirada";
+    }
+    return source || "delivery";
+  }
+
+  function getOrderTypeLabel(order) {
+    const source = getOrderSource(order);
+    if (source === "balcão" || source === "balcao") {
+      const addr = String(order?.customer?.address || "").toLowerCase();
+      if (addr === "delivery" || addr.includes("delivery")) return "Delivery";
+      return "Pedido no balcão";
+    }
+    if (source === "retirada") return "Retirada";
+    return "Delivery";
+  }
+
+  function getOrderTypeGroup(order) {
+    return getOrderTypeLabel(order) === "Delivery" ? "delivery" : "balcao";
+  }
+
+  function getOrderSubtype(order) {
+    const source = getOrderSource(order);
+    const addr = String(order?.customer?.address || "").toLowerCase();
+    if (source === "retirada" || addr.includes("retirada")) return "retirada";
+    if (source === "balcão" || source === "balcao" || addr.includes("comer no local") || addr.includes("para levar")) {
+      if (addr.includes("para levar")) return "levar";
+      if (addr.includes("delivery")) return "delivery";
+      return "local";
+    }
+    return "delivery";
+  }
+
   function productImage(category, size) {
     if (category === "tigela") return "/produtos/tigela.png";
     if (category === "barca") return "/produtos/barca.jfif";
@@ -481,7 +518,7 @@ async function playNewOrderSound() {
               }`}
             >
               <div className={`flex justify-between gap-1 ${fullNames ? "items-start" : "items-center"}`}>
-                <span className="font-medium text-purple-950 break-words whitespace-normal leading-snug">{ing.name}</span>
+                <span className="font-semibold text-purple-950 break-words whitespace-normal leading-snug">{ing.name}</span>
                 {active && <Check size={15} className="text-purple-700 shrink-0" />}
               </div>
               <span className={`text-xs leading-snug ${!showPrices && !active ? "whitespace-nowrap text-emerald-600" : "break-words whitespace-normal " + (active && !showPrices ? (selected.findIndex((item) => item.id === ing.id) >= includedLimit ? "text-pink-600" : "text-emerald-600") : ing.free ? "text-emerald-600" : "text-pink-600")}`}>
@@ -506,8 +543,8 @@ async function playNewOrderSound() {
       <div className="flex items-center gap-3 rounded-2xl border border-purple-100 bg-white px-4 py-3 hover:shadow-md hover:shadow-purple-900/5 transition-shadow">
         {img && <img src={img} alt={label} className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl object-cover shrink-0" loading="lazy" />}
         <div className="flex-1 min-w-0">
-          <p className="font-semibold text-purple-950">{label}</p>
-          <p className="text-purple-600 text-sm">{formatBRL(price)}</p>
+          <p className="font-bold text-purple-950">{label}</p>
+          <p className="font-bold text-purple-600 text-sm">{formatBRL(price)}</p>
         </div>
         <button
           onClick={() => onAdd(size)}
@@ -817,18 +854,18 @@ async function playNewOrderSound() {
           />
         ) : (
           <>
-            <p className="text-sm text-purple-500 mb-3">Ingredientes: {ings.length}/{calculation.rule.ingredientLimit}</p>
+            <p className="text-sm font-semibold text-purple-500 mb-3">Ingredientes: {ings.length}/{calculation.rule.ingredientLimit}</p>
             <IngredientGrid ingredients={availableIngredients} selected={ings} onToggle={toggle} showPrices={false} includedLimit={calculation.rule.ingredientLimit} getExtraPrice={(ing) => getIngredientExtraPrice(ing, excess)} />
-            <p className="text-sm font-semibold text-purple-800 mt-5 mb-2">Frutas</p>
-            <p className="text-xs text-purple-500 mb-2">{calculation.rule.fruitLimit ? `Frutas: ${fruits.length}/${calculation.rule.fruitLimit}` : "Frutas: preço por unidade em copinho separado de 100 ml"}</p>
+            <p className="text-sm font-bold text-purple-800 mt-5 mb-2">Frutas</p>
+            <p className="text-xs font-semibold text-purple-500 mb-2">{calculation.rule.fruitLimit ? `Frutas: ${fruits.length}/${calculation.rule.fruitLimit}` : "Frutas: preço por unidade em copinho separado de 100 ml"}</p>
             <IngredientGrid ingredients={availableFruits} selected={fruits} onToggle={toggleFruit} showPrices={false} includedLimit={calculation.rule.fruitLimit} extraLabel="Fruta extra" getExtraPrice={(item) => { const fruit = fruitOpts.find((f) => f.id === item.id); return fruit?.price ?? excess; }} />
-            <p className="text-sm font-semibold text-purple-800 mt-5 mb-2">Cobertura incluída</p>
+            <p className="text-sm font-bold text-purple-800 mt-5 mb-2">Cobertura incluída</p>
             <div className="grid grid-cols-2 gap-2">
               {TOPPING_OPTIONS.map((option) => <button key={option.id} onClick={() => setTopping(option)} className={`rounded-xl border px-3 py-2 text-left text-sm ${topping?.id === option.id ? "border-purple-700 bg-purple-50" : "border-purple-100"}`}>{option.name}{topping?.id === option.id && <Check size={14} className="inline ml-2 text-purple-700" />}</button>)}
             </div>
             <div className="mt-5 rounded-xl bg-purple-50 p-3 text-sm text-purple-800 space-y-1">
-              {calculation.ingredientExtraCount > 0 && <p>{calculation.ingredientExtraCount} ingrediente(s) extra(s): +{formatBRL(calculation.ingredientExcessPrice)}</p>}
-              {calculation.fruitExtraCount > 0 && <p>{calculation.fruitExtraCount} fruta(s) extra(s): +{formatBRL(calculation.fruitExcessPrice)}</p>}
+              {calculation.ingredientExtraCount > 0 && <p>{calculation.ingredientExtraCount} ingrediente(s) extra(s): +<span className="font-bold text-purple-950">{formatBRL(calculation.ingredientExcessPrice)}</span></p>}
+              {calculation.fruitExtraCount > 0 && <p>{calculation.fruitExtraCount} fruta(s) extra(s): +<span className="font-bold text-purple-950">{formatBRL(calculation.fruitExcessPrice)}</span></p>}
               {size === 1000 && <p>3 ingredientes incluídos no copinho de 100 ml.</p>}
             </div>
           </>
@@ -1039,7 +1076,7 @@ async function playNewOrderSound() {
                   <div key={item.id} className="border border-purple-100 rounded-2xl p-4">
                     <div className="flex justify-between items-start gap-2">
                       <div>
-                        <p className="font-semibold text-purple-950">{itemLabel(item.category, item.size)}</p>
+                        <p className="font-bold text-purple-950">{itemLabel(item.category, item.size)}</p>
                         {item.layers?.length === 3 ? (
                           <div className="mt-0.5 space-y-0.5">
                             {LAYER_LABELS.map((layerName, i) => (
@@ -1067,7 +1104,7 @@ async function playNewOrderSound() {
                     <div className="flex items-center justify-between mt-3">
                       <div className="flex items-center gap-3 border border-purple-100 rounded-full px-2 py-1">
                         <button onClick={() => onQty(item.id, -1)} className="w-6 h-6 flex items-center justify-center text-purple-700"><Minus size={14} /></button>
-                        <span className="font-semibold text-sm w-4 text-center">{item.qty}</span>
+                        <span className="font-bold text-sm w-4 text-center">{item.qty}</span>
                         <button onClick={() => onQty(item.id, 1)} className="w-6 h-6 flex items-center justify-center text-purple-700"><Plus size={14} /></button>
                       </div>
                       <p className="font-bold text-purple-950">{formatBRL(unitPrice(item, prices) * item.qty)}</p>
@@ -1080,7 +1117,7 @@ async function playNewOrderSound() {
 
           {cart.length > 0 && (
             <div className="border-t border-purple-50 px-5 py-4 space-y-3">
-              <div className="flex justify-between text-purple-950"><span className="text-purple-500">Subtotal</span><span className="font-semibold">{formatBRL(total)}</span></div>
+              <div className="flex justify-between text-purple-950"><span className="text-purple-500">Subtotal</span><span className="font-bold">{formatBRL(total)}</span></div>
               <div className="flex justify-between text-lg font-bold text-purple-950"><span>Total</span><span>{formatBRL(total)}</span></div>
               <button onClick={onCheckout} className="w-full py-3.5 rounded-xl bg-purple-800 text-white font-bold hover:bg-purple-900 active:scale-[.98] transition-all">Finalizar pedido</button>
             </div>
@@ -1219,7 +1256,7 @@ function generatePixPayload(amount) {
     <Modal title="Acompanhar pedido" onClose={onClose}>
       <div className="space-y-6">
         <div className="bg-purple-50 rounded-xl p-4">
-          <p className="text-sm text-purple-600">Pedido #{order.id.slice(-8)}</p>
+          <p className="text-sm text-purple-600">Pedido #<span className="font-bold text-purple-950">{order.id.slice(-8)}</span></p>
           <p className="text-lg font-bold text-purple-950 mt-1">
             Status atual: {statusSteps[currentStepIndex]?.label || order.status}
           </p>
@@ -1246,7 +1283,7 @@ function generatePixPayload(amount) {
                 </div>
                 <div className="flex-1">
                   <p
-                    className={`font-semibold ${
+                    className={`font-bold ${
                       isActive ? "text-purple-950" : "text-gray-400"
                     }`}
                   >
@@ -1337,8 +1374,8 @@ function CheckoutModal({ cart, prices, config, deliveryStatus, onClose, onSent }
       >
         <div className="space-y-3.5">
           <div className="rounded-xl bg-purple-50 px-4 py-3 space-y-1 text-purple-950">
-            <div className="flex justify-between text-sm"><span>Subtotal dos produtos</span><span>{formatBRL(subtotal)}</span></div>
-            <div className="flex justify-between text-sm"><span>Taxa de entrega</span><span>{orderType === "retirada" ? "Grátis" : (deliveryFee === undefined ? "Selecione a região" : formatBRL(deliveryFee))}</span></div>
+            <div className="flex justify-between text-sm"><span>Subtotal dos produtos</span><span className="font-bold">{formatBRL(subtotal)}</span></div>
+            <div className="flex justify-between text-sm"><span>Taxa de entrega</span><span>{orderType === "retirada" ? "Grátis" : (deliveryFee === undefined ? "Selecione a região" : <span className="font-bold">{formatBRL(deliveryFee)}</span>)}</span></div>
             <div className="flex justify-between border-t border-purple-200 pt-1 font-bold"><span>Total final</span><span>{formatBRL(total)}</span></div>
           </div>
 
@@ -1428,7 +1465,7 @@ function CheckoutModal({ cart, prices, config, deliveryStatus, onClose, onSent }
         </div>
       </div>
 
-      <p className="mt-3 text-xs font-medium text-emerald-900">
+      <p className="mt-3 text-xs font-bold text-emerald-900">
         Valor: {formatBRL(total)}
       </p>
 
@@ -1507,16 +1544,16 @@ function Contact({ config }) {
         <h2 className="text-3xl sm:text-4xl font-black text-purple-950 text-center" style={{ fontFamily: "'Fraunces', serif" }}>Contato</h2>
         <div className="mt-8 grid sm:grid-cols-2 gap-4">
           <a href={`https://wa.me/${config.whatsapp}`} target="_blank" rel="noreferrer" className="flex items-center gap-3 bg-white rounded-2xl p-4 border border-purple-100 hover:border-purple-300 transition-colors">
-            <MessageCircle className="text-purple-700" /><div><p className="font-semibold text-purple-950">WhatsApp</p><p className="text-sm text-purple-500">Peça diretamente por lá</p></div>
+            <MessageCircle className="text-purple-700" /><div><p className="font-bold text-purple-950">WhatsApp</p><p className="text-sm text-purple-500">Peça diretamente por lá</p></div>
           </a>
           <a href="https://www.instagram.com/acaibocaroxa.bsb/" target="_blank" rel="noreferrer" className="flex items-center gap-3 bg-white rounded-2xl p-4 border border-purple-100 hover:border-purple-300 transition-colors">
-            <Camera className="text-purple-700" /><div><p className="font-semibold text-purple-950">Instagram</p><p className="text-sm text-purple-500">{config.instagram}</p></div>
+            <Camera className="text-purple-700" /><div><p className="font-bold text-purple-950">Instagram</p><p className="text-sm text-purple-500">{config.instagram}</p></div>
           </a>
           <div className="flex items-center gap-3 bg-white rounded-2xl p-4 border border-purple-100">
-            <MapPin className="text-purple-700" /><div><p className="font-semibold text-purple-950">Endereço</p><p className="text-sm text-purple-500">{config.address}</p></div>
+            <MapPin className="text-purple-700" /><div><p className="font-bold text-purple-950">Endereço</p><p className="text-sm text-purple-500">{config.address}</p></div>
           </div>
           <div className="flex items-center gap-3 bg-white rounded-2xl p-4 border border-purple-100">
-            <Clock className="text-purple-700" /><div><p className="font-semibold text-purple-950">Horário</p><p className="text-sm text-purple-500">{config.hours}</p></div>
+            <Clock className="text-purple-700" /><div><p className="font-bold text-purple-950">Horário</p><p className="text-sm text-purple-500">{config.hours}</p></div>
           </div>
         </div>
       </div>
@@ -1684,7 +1721,7 @@ function AdminPriceTab({ prices, setPrices }) {
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             {SIZE_OPTIONS[cat].map((size) => (
               <div key={size} className="flex items-center justify-between gap-2 rounded-xl border border-purple-100 px-3 py-2">
-                <span className="text-sm text-purple-700">{cat === "acai" || cat === "cupuacu" || cat === "casadinho" ? `${size} ml` : itemLabel(cat, size)}</span>
+                <span className="text-sm font-semibold text-purple-700">{cat === "acai" || cat === "cupuacu" || cat === "casadinho" ? `${size} ml` : itemLabel(cat, size)}</span>
                 <div className="flex items-center gap-1">
                   <span className="text-purple-400 text-sm">R$</span>
                   <input
@@ -1768,7 +1805,7 @@ function AdminIngredientsTab({ ingredients, setIngredients }) {
       </div>
 
       <div className="bg-purple-50 rounded-2xl p-4">
-        <p className="text-sm font-semibold text-purple-800 mb-2">Adicionar ingrediente</p>
+        <p className="text-sm font-bold text-purple-800 mb-2">Adicionar ingrediente</p>
         <div className="flex flex-wrap items-center gap-2">
           <input value={draft.name} onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))} placeholder="Nome" className="flex-1 min-w-[140px] rounded-lg border border-purple-200 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" />
           <label className="flex items-center gap-1.5 text-xs text-purple-600">
@@ -1800,7 +1837,7 @@ function OrderEditor({ title, items, onMove }) {
       <div className="space-y-2">
         {items.map((item, index) => (
           <div key={item.id} className="flex items-center justify-between gap-3 rounded-xl border border-purple-100 px-3 py-2">
-            <span className="text-sm text-purple-900">{index + 1}. {item.name}</span>
+            <span className="text-sm font-bold text-purple-900">{index + 1}. {item.name}</span>
             <div className="flex items-center gap-1">
               <button onClick={() => onMove(index, -1)} disabled={index === 0} aria-label={`Mover ${item.name} para cima`} title="Mover para cima" className="w-8 h-8 rounded-lg border border-purple-100 flex items-center justify-center text-purple-700 disabled:opacity-30"><ArrowUp size={15} /></button>
               <button onClick={() => onMove(index, 1)} disabled={index === items.length - 1} aria-label={`Mover ${item.name} para baixo`} title="Mover para baixo" className="w-8 h-8 rounded-lg border border-purple-100 flex items-center justify-center text-purple-700 disabled:opacity-30"><ArrowDown size={15} /></button>
@@ -2699,7 +2736,7 @@ function CounterOrderModal({
             <div className="max-h-60 overflow-y-auto space-y-3">
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <p className="text-sm font-semibold text-purple-800">
+                  <p className="text-sm font-bold text-purple-800">
                     Ingredientes — {selectedIngredients.length}/{rule.ingredientLimit} incluídos
                     {Math.max(0, selectedIngredients.length - rule.ingredientLimit) > 0 && 
                       ` + ${Math.max(0, selectedIngredients.length - rule.ingredientLimit)} extra(s)`
@@ -2732,7 +2769,7 @@ function CounterOrderModal({
                         }`}
                       >
                         <div className="flex justify-between items-start">
-                          <span className="font-medium">{ing.name}</span>
+                          <span className="font-semibold">{ing.name}</span>
                           {isExtra && <span className="text-red-600 text-xs font-bold ml-1">EXTRA +{formatBRL(extraPrice)}</span>}
                         </div>
                       </button>
@@ -2743,7 +2780,7 @@ function CounterOrderModal({
 
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <p className="text-sm font-semibold text-purple-800">
+                  <p className="text-sm font-bold text-purple-800">
                     Frutas — {selectedFruits.length}/{rule.fruitLimit} incluídas
                     {Math.max(0, selectedFruits.length - rule.fruitLimit) > 0 && 
                       ` + ${Math.max(0, selectedFruits.length - rule.fruitLimit)} extra(s)`
@@ -2776,7 +2813,7 @@ function CounterOrderModal({
                         }`}
                       >
                         <div className="flex justify-between items-start">
-                          <span className="font-medium">{fruit.name}</span>
+                          <span className="font-semibold">{fruit.name}</span>
                           {isExtra && <span className="text-red-600 text-xs font-bold ml-1">EXTRA +{formatBRL(extraPrice)}</span>}
                         </div>
                       </button>
@@ -2881,13 +2918,13 @@ function CounterOrderModal({
             <div className="bg-purple-50 rounded-2xl p-4 space-y-3">
               <div className="flex justify-between items-center">
                 <span className="font-semibold text-purple-950">Tipo:</span>
-                <span className="text-purple-800">
+                <span className="font-bold text-purple-950">
                   {selectedType === "local" ? "Comer no local" : selectedType === "levar" ? "Para levar" : "Delivery"}
                 </span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="font-semibold text-purple-950">Pagamento:</span>
-                <span className="text-purple-800">{paymentMethod}</span>
+                <span className="font-bold text-purple-950">{paymentMethod}</span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="font-semibold text-purple-950">Total:</span>
@@ -2896,7 +2933,7 @@ function CounterOrderModal({
             </div>
 
             <div className="space-y-2">
-              <h4 className="font-semibold text-purple-950">Itens:</h4>
+              <h4 className="font-bold text-purple-950">Itens:</h4>
               {items.map((item) => (
                 <div key={item.id} className="bg-white rounded-xl p-3 border border-purple-100">
                   <div className="flex justify-between items-start mb-2">
@@ -3060,7 +3097,9 @@ function AdminOrdersTab({ orders, setOrders, showFinance = false }) {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   });
-  const [financeTab, setFinanceTab] = useState("resumo");
+  const [financeTypeFilter, setFinanceTypeFilter] = useState("todos");
+  const [financePayFilter, setFinancePayFilter] = useState("todos");
+  const [openSection, setOpenSection] = useState({ fechamento: true, detalhes: false, balcaomanual: false, historico: false });
   const [statusFilter, setStatusFilter] = useState("todos");
   const [financeRange, setFinanceRange] = useState("today");
   const [customRangeStart, setCustomRangeStart] = useState(() => saoPauloRelativeDateKey(-6));
@@ -3104,21 +3143,6 @@ function AdminOrdersTab({ orders, setOrders, showFinance = false }) {
   const monthlyAverageTicket = monthlySummary.totalOrders > 0 ? monthlySummary.total / monthlySummary.totalOrders : 0;
 
   // Filtro diário (mantido para compatibilidade com financeiro)
-  const dailyOrders = sorted.filter((order) => order.status !== "cancelado" && saoPauloDateKey(order.createdAt) === selectedDate);
-  const summary = dailyOrders.reduce((result, order) => {
-    const payment = paymentOptions.includes(order.paymentMethod) ? order.paymentMethod : "Não informado";
-    result.products += Number(order.subtotal) || 0;
-    result.delivery += Number(order.deliveryFee) || 0;
-    result.total += Number(order.total) || 0;
-    result.payments[payment].count += 1;
-    result.payments[payment].total += Number(order.total) || 0;
-    return result;
-  }, {
-    products: 0,
-    delivery: 0,
-    total: 0,
-    payments: Object.fromEntries(paymentOptions.map((payment) => [payment, { count: 0, total: 0 }])),
-  });
   const counterRows = [
     ["Pix", "pix_count", "pix_total"],
     ["Dinheiro", "cash_count", "cash_total"],
@@ -3127,8 +3151,6 @@ function AdminOrdersTab({ orders, setOrders, showFinance = false }) {
   ];
   const counterSales = counterRows.reduce((total, [, countKey]) => total + (Number(counter[countKey]) || 0), 0);
   const counterTotal = counterRows.reduce((total, [, , totalKey]) => total + (Number(counter[totalKey]) || 0), 0);
-  const generalSales = dailyOrders.length + counterSales;
-  const generalTotal = summary.total + counterTotal;
   const statusFilters = [
     ["todos", "Todos"],
     ["novo", "Novos"],
@@ -3166,15 +3188,47 @@ function AdminOrdersTab({ orders, setOrders, showFinance = false }) {
         })
       : sorted.filter((order) => saoPauloDateKey(order.createdAt) === selectedDate);
 
+  const financeTypeFilterOptions = [
+    ["todos", "Todos"],
+    ["balcao", "Pedido no balcão"],
+    ["delivery", "Delivery"],
+    ["local", "Comer no local"],
+    ["levar", "Para levar"],
+  ];
+  const financePayFilterOptions = [
+    ["todos", "Todos"],
+    ["pix", "Pix"],
+    ["dinheiro", "Dinheiro"],
+    ["cartao", "Cartão"],
+  ];
+  const paymentGroupOf = (method) => {
+    if (method === "Pix") return "pix";
+    if (method === "Dinheiro") return "dinheiro";
+    if (method === "Cartão de crédito" || method === "Cartão de débito") return "cartao";
+    return "outros";
+  };
+  const financeFilteredOrders = financeRangeOrders.filter((order) => {
+    if (financeTypeFilter !== "todos") {
+      const group = getOrderTypeGroup(order);
+      const subtype = getOrderSubtype(order);
+      if (financeTypeFilter === "balcao" && group !== "balcao") return false;
+      if (financeTypeFilter === "delivery" && group !== "delivery") return false;
+      if (financeTypeFilter === "local" && subtype !== "local") return false;
+      if (financeTypeFilter === "levar" && subtype !== "levar") return false;
+    }
+    if (financePayFilter !== "todos" && paymentGroupOf(order.paymentMethod) !== financePayFilter) return false;
+    return true;
+  });
+
   const ordersToDisplay = showFinance
-    ? (financeTab === "resumo" ? financeRangeOrders : [])
+    ? financeFilteredOrders
     : (statusFilter === "todos" ? filteredOrders : filteredOrders.filter((order) => order.status === statusFilter));
 
   const formatShortDateKey = (key) => (key ? key.split("-").reverse().slice(0, 2).join("/") : "");
   const financeRangeLabel = financeRange === "7d" ? "Últimos 7 dias" : financeRange === "30d" ? "Últimos 30 dias" : financeRange === "today" ? "Hoje" : financeRange === "customRange" ? `Período personalizado: ${formatShortDateKey(customRangeStart)} a ${formatShortDateKey(customRangeEnd)}` : `Dia ${formatShortDateKey(selectedDate)}`;
 
-  const validRangeOrders = financeRangeOrders.filter((order) => order.status !== "cancelado");
-  const rangeStats = financeRangeOrders.reduce((result, order) => {
+  const validRangeOrders = financeFilteredOrders.filter((order) => order.status !== "cancelado");
+  const rangeStats = financeFilteredOrders.reduce((result, order) => {
     const payment = paymentOptions.includes(order.paymentMethod) ? order.paymentMethod : "Não informado";
     const canceled = order.status === "cancelado";
     const value = Number(order.total) || 0;
@@ -3201,6 +3255,26 @@ function AdminOrdersTab({ orders, setOrders, showFinance = false }) {
   });
   const rangeLiquidTotal = rangeStats.total - rangeStats.canceledTotal;
   const rangeAverageTicket = rangeStats.count > 0 ? rangeLiquidTotal / rangeStats.count : 0;
+
+  const financeTypeStats = validRangeOrders.reduce((result, order) => {
+    result[getOrderTypeGroup(order)].count += 1;
+    result[getOrderTypeGroup(order)].total += Number(order.total) || 0;
+    return result;
+  }, { balcao: { count: 0, total: 0 }, delivery: { count: 0, total: 0 } });
+
+  const financePayStats = validRangeOrders.reduce((result, order) => {
+    const group = paymentGroupOf(order.paymentMethod);
+    result[group].count += 1;
+    result[group].total += Number(order.total) || 0;
+    result[group].delivery += getOrderTypeGroup(order) === "delivery" ? Number(order.total) || 0 : 0;
+    result[group].balcao += getOrderTypeGroup(order) === "balcao" ? Number(order.total) || 0 : 0;
+    return result;
+  }, {
+    pix: { count: 0, total: 0, delivery: 0, balcao: 0 },
+    dinheiro: { count: 0, total: 0, delivery: 0, balcao: 0 },
+    cartao: { count: 0, total: 0, delivery: 0, balcao: 0 },
+    outros: { count: 0, total: 0, delivery: 0, balcao: 0 },
+  });
 
   const byDaySales = (() => {
     const map = new Map();
@@ -3249,7 +3323,7 @@ function AdminOrdersTab({ orders, setOrders, showFinance = false }) {
       cancelado: "Cancelado",
     };
     return (
-      <span className={`inline-block shrink-0 text-xs font-semibold px-3 py-1 rounded-full ${styles[status] || "bg-gray-100 text-gray-700"}`}>
+      <span className={`inline-block shrink-0 text-xs font-bold px-3 py-1 rounded-full ${styles[status] || "bg-gray-100 text-gray-700"}`}>
         {labels[status] || status}
       </span>
     );
@@ -3562,209 +3636,275 @@ function AdminOrdersTab({ orders, setOrders, showFinance = false }) {
       )}
 
       {showFinance && (
-        <div className="flex gap-2 overflow-x-auto rounded-2xl border border-purple-100 bg-white p-2">
-          {[["resumo", "Resumo de vendas"], ["balcao", "Vendas do balcão"], ["fechamento", "Fechamento de caixa"], ["historico", "Histórico de fechamentos"]].map(([id, label]) => (
-            <button key={id} onClick={() => setFinanceTab(id)} className={`whitespace-nowrap rounded-xl px-3 py-2 text-sm font-semibold ${financeTab === id ? "bg-purple-800 text-white" : "text-purple-700 hover:bg-purple-50"}`}>{label}</button>
-          ))}
-        </div>
-      )}
-      {showFinance && financeTab === "resumo" && (
-      <section className="rounded-2xl border border-purple-100 bg-white p-5 space-y-5">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-wide text-purple-500">Relatório de vendas</p>
-            <p className="mt-1 text-lg font-black text-purple-950">{financeRangeLabel}</p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <button
-              onClick={() => { setFinanceRange("today"); setSelectedDate(saoPauloDateKey(new Date())); }}
-              aria-pressed={financeRange === "today"}
-              className={`rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${financeRange === "today" ? "border-purple-800 bg-purple-800 text-white" : "border-purple-200 text-purple-700 hover:bg-purple-50"}`}
-            >Hoje</button>
-            <button
-              onClick={() => { setFinanceRange("custom"); setSelectedDate(saoPauloRelativeDateKey(-1)); }}
-              aria-pressed={financeRange === "custom" && selectedDate === saoPauloRelativeDateKey(-1)}
-              className={`rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${financeRange === "custom" && selectedDate === saoPauloRelativeDateKey(-1) ? "border-purple-800 bg-purple-800 text-white" : "border-purple-200 text-purple-700 hover:bg-purple-50"}`}
-            >Ontem</button>
-            <button
-              onClick={() => setFinanceRange("7d")}
-              aria-pressed={financeRange === "7d"}
-              className={`rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${financeRange === "7d" ? "border-purple-800 bg-purple-800 text-white" : "border-purple-200 text-purple-700 hover:bg-purple-50"}`}
-            >7 dias</button>
-            <button
-              onClick={() => setFinanceRange("30d")}
-              aria-pressed={financeRange === "30d"}
-              className={`rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${financeRange === "30d" ? "border-purple-800 bg-purple-800 text-white" : "border-purple-200 text-purple-700 hover:bg-purple-50"}`}
-            >30 dias</button>
-            <button
-              onClick={() => setFinanceRange("customRange")}
-              aria-pressed={financeRange === "customRange"}
-              className={`rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${financeRange === "customRange" ? "border-purple-800 bg-purple-800 text-white" : "border-purple-200 text-purple-700 hover:bg-purple-50"}`}
-            >Período personalizado</button>
-            <input
-              type="date"
-              value={selectedDate}
-              onChange={(event) => { setFinanceRange("custom"); setSelectedDate(event.target.value); }}
-              className="rounded-lg border border-purple-200 px-3 py-2 text-xs text-purple-900"
-            />
-          </div>
-        </div>
-
-        {financeRange === "customRange" && (
-          <div className="rounded-xl border border-purple-100 bg-purple-50/50 p-4 space-y-3">
-            <div className="flex flex-wrap items-end gap-x-4 gap-y-3">
-              <label className="block">
-                <span className="block text-xs font-semibold text-purple-600">De</span>
-                <input type="date" value={customRangeStart} onChange={(event) => setCustomRangeStart(event.target.value)} className="mt-1 rounded-lg border border-purple-200 px-3 py-2 text-xs text-purple-900" />
-              </label>
-              <label className="block">
-                <span className="block text-xs font-semibold text-purple-600">Até</span>
-                <input type="date" value={customRangeEnd} onChange={(event) => setCustomRangeEnd(event.target.value)} className="mt-1 rounded-lg border border-purple-200 px-3 py-2 text-xs text-purple-900" />
-              </label>
-              <p className="pb-2 text-xs text-purple-500">O período inclui o primeiro e o último dia selecionados.</p>
+        <div className="space-y-4">
+          <section className="rounded-2xl border border-purple-100 bg-white p-5 space-y-4">
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wide text-purple-500">Caixa</p>
+                <p className="mt-1 text-lg font-black text-purple-950">{financeRangeLabel}</p>
+              </div>
+              <p className="text-xs font-bold text-purple-400">{ordersToDisplay.length} pedido(s) no filtro</p>
             </div>
-            {customRangeInvalid && (
-              <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
-                A data inicial é maior que a data final. Ajuste as datas para corrigir e atualizar o relatório.
-              </p>
+
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wide text-purple-500">Período</p>
+              <div className="flex flex-wrap gap-2 mt-2">
+                <button
+                  onClick={() => { setFinanceRange("today"); setSelectedDate(saoPauloDateKey(new Date())); }}
+                  aria-pressed={financeRange === "today"}
+                  className={`rounded-lg border px-3 py-2 text-xs font-bold transition-colors ${financeRange === "today" ? "border-purple-800 bg-purple-800 text-white" : "border-purple-200 text-purple-700 hover:bg-purple-50"}`}
+                >Hoje</button>
+                <button
+                  onClick={() => { setFinanceRange("custom"); setSelectedDate(saoPauloRelativeDateKey(-1)); }}
+                  aria-pressed={financeRange === "custom" && selectedDate === saoPauloRelativeDateKey(-1)}
+                  className={`rounded-lg border px-3 py-2 text-xs font-bold transition-colors ${financeRange === "custom" && selectedDate === saoPauloRelativeDateKey(-1) ? "border-purple-800 bg-purple-800 text-white" : "border-purple-200 text-purple-700 hover:bg-purple-50"}`}
+                >Ontem</button>
+                <button
+                  onClick={() => setFinanceRange("7d")}
+                  aria-pressed={financeRange === "7d"}
+                  className={`rounded-lg border px-3 py-2 text-xs font-bold transition-colors ${financeRange === "7d" ? "border-purple-800 bg-purple-800 text-white" : "border-purple-200 text-purple-700 hover:bg-purple-50"}`}
+                >7 dias</button>
+                <button
+                  onClick={() => setFinanceRange("30d")}
+                  aria-pressed={financeRange === "30d"}
+                  className={`rounded-lg border px-3 py-2 text-xs font-bold transition-colors ${financeRange === "30d" ? "border-purple-800 bg-purple-800 text-white" : "border-purple-200 text-purple-700 hover:bg-purple-50"}`}
+                >30 dias</button>
+                <button
+                  onClick={() => setFinanceRange("customRange")}
+                  aria-pressed={financeRange === "customRange"}
+                  className={`rounded-lg border px-3 py-2 text-xs font-bold transition-colors ${financeRange === "customRange" ? "border-purple-800 bg-purple-800 text-white" : "border-purple-200 text-purple-700 hover:bg-purple-50"}`}
+                >Personalizado</button>
+              </div>
+            </div>
+
+            {financeRange === "customRange" && (
+              <div className="rounded-xl border border-purple-100 bg-purple-50/50 p-4 space-y-3">
+                <div className="flex flex-wrap items-end gap-x-4 gap-y-3">
+                  <label className="block">
+                    <span className="block text-xs font-semibold text-purple-600">De</span>
+                    <input type="date" value={customRangeStart} onChange={(event) => setCustomRangeStart(event.target.value)} className="mt-1 rounded-lg border border-purple-200 px-3 py-2 text-xs text-purple-900" />
+                  </label>
+                  <label className="block">
+                    <span className="block text-xs font-semibold text-purple-600">Até</span>
+                    <input type="date" value={customRangeEnd} onChange={(event) => setCustomRangeEnd(event.target.value)} className="mt-1 rounded-lg border border-purple-200 px-3 py-2 text-xs text-purple-900" />
+                  </label>
+                  <p className="pb-2 text-xs text-purple-500">O período inclui o primeiro e o último dia selecionados.</p>
+                </div>
+                {customRangeInvalid && (
+                  <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
+                    A data inicial é maior que a data final. Ajuste as datas para corrigir e atualizar o relatório.
+                  </p>
+                )}
+              </div>
             )}
-          </div>
-        )}
 
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <div className="rounded-xl bg-purple-50 p-4"><p className="text-xs text-purple-500">Faturamento bruto (período)</p><p className="mt-1 text-2xl font-black text-purple-950">{formatBRL(rangeStats.total)}</p></div>
-          <div className="rounded-xl bg-red-50 p-4"><p className="text-xs text-red-500">Cancelamentos</p><p className="mt-1 text-2xl font-black text-red-900">{rangeStats.canceledCount} · {formatBRL(rangeStats.canceledTotal)}</p></div>
-          <div className="rounded-xl bg-emerald-50 p-4"><p className="text-xs text-emerald-600">Faturamento líquido</p><p className="mt-1 text-2xl font-black text-emerald-900">{formatBRL(rangeLiquidTotal)}</p></div>
-          <div className="rounded-xl bg-purple-50 p-4"><p className="text-xs text-purple-500">Vendas no período (válidas)</p><p className="mt-1 text-2xl font-black text-purple-950">{rangeStats.count}</p></div>
-        </div>
+            <div className="grid gap-4 lg:grid-cols-2">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wide text-purple-500">Tipo de pedido</p>
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {financeTypeFilterOptions.map(([id, label]) => (
+                    <button
+                      key={id}
+                      onClick={() => setFinanceTypeFilter(id)}
+                      className={`rounded-lg border px-3 py-2 text-xs font-bold transition-colors ${financeTypeFilter === id ? "border-purple-800 bg-purple-800 text-white" : "border-purple-200 text-purple-700 hover:bg-purple-50"}`}
+                    >{label}</button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wide text-purple-500">Forma de pagamento</p>
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {financePayFilterOptions.map(([id, label]) => (
+                    <button
+                      key={id}
+                      onClick={() => setFinancePayFilter(id)}
+                      className={`rounded-lg border px-3 py-2 text-xs font-bold transition-colors ${financePayFilter === id ? "border-purple-800 bg-purple-800 text-white" : "border-purple-200 text-purple-700 hover:bg-purple-50"}`}
+                    >{label}</button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </section>
 
-        <div className="flex flex-wrap gap-3">
-          <div className="rounded-lg border border-purple-100 bg-purple-50/50 px-3 py-2 text-sm"><span className="text-purple-500">Ticket médio (vendas válidas)</span> <strong className="text-purple-950">{formatBRL(rangeAverageTicket)}</strong></div>
-          <div className="rounded-lg border border-purple-100 bg-purple-50/50 px-3 py-2 text-sm"><span className="text-purple-500">Valor em produtos (açaí)</span> <strong className="text-purple-950">{formatBRL(rangeStats.products)}</strong></div>
-          <div className="rounded-lg border border-purple-100 bg-purple-50/50 px-3 py-2 text-sm"><span className="text-purple-500">Taxa de entrega</span> <strong className="text-purple-950">{formatBRL(rangeStats.delivery)}</strong></div>
-        </div>
-
-        <div className="grid gap-4 lg:grid-cols-2">
-          <div className="rounded-xl border border-purple-100 p-4">
-            <p className="font-bold text-purple-950">Faturamento por dia</p>
-            {byDaySales.length === 0 && <p className="mt-2 text-sm text-purple-400">Sem vendas no período.</p>}
-            <div className="mt-3 space-y-2">
-              {byDaySales.map((row) => (
-                <div key={row.date} className="flex items-center justify-between gap-2 rounded-lg bg-purple-50/60 px-3 py-2 text-sm">
-                  <div>
-                    <p className="font-semibold text-purple-950">{formatShortDateKey(row.date)}</p>
-                    <p className="text-xs text-purple-500">{row.count} pedido(s)</p>
+          <section className="rounded-2xl border border-purple-100 bg-white p-5 space-y-4">
+            <p className="text-sm font-black text-purple-950">Resumo do caixa</p>
+            <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+              <div className="rounded-xl bg-purple-50 p-4"><p className="text-xs font-bold text-purple-500">Faturamento bruto</p><p className="mt-1 text-2xl font-black text-purple-950">{formatBRL(rangeStats.total)}</p></div>
+              <div className="rounded-xl bg-red-50 p-4"><p className="text-xs font-bold text-red-500">Cancelamentos</p><p className="mt-1 text-2xl font-black text-red-900">{formatBRL(rangeStats.canceledTotal)}</p><p className="text-xs font-semibold text-red-500">{rangeStats.canceledCount} pedido(s)</p></div>
+              <div className="rounded-xl bg-emerald-50 p-4"><p className="text-xs font-bold text-emerald-600">Faturamento líquido</p><p className="mt-1 text-2xl font-black text-emerald-900">{formatBRL(rangeLiquidTotal)}</p></div>
+              <div className="rounded-xl bg-purple-50 p-4"><p className="text-xs font-bold text-purple-500">Quantidade de pedidos</p><p className="mt-1 text-2xl font-black text-purple-950">{rangeStats.count}</p></div>
+              <div className="rounded-xl bg-purple-50 p-4"><p className="text-xs font-bold text-purple-500">Ticket médio</p><p className="mt-1 text-2xl font-black text-purple-950">{formatBRL(rangeAverageTicket)}</p></div>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="rounded-xl border border-purple-100 p-4">
+                <p className="font-bold text-purple-950">Por tipo de pedido</p>
+                <div className="mt-3 space-y-2">
+                  <div className="flex items-center justify-between gap-2 rounded-lg border border-purple-100 px-3 py-2 text-sm">
+                    <span className="font-semibold text-purple-900">Pedido no balcão</span>
+                    <span className="font-bold text-purple-900">{financeTypeStats.balcao.count} pedidos — {formatBRL(financeTypeStats.balcao.total)}</span>
                   </div>
-                  <div className="text-right">
-                    <p className="font-bold text-purple-950">{formatBRL(row.total)}</p>
-                    <p className="text-xs text-purple-500">Ticket: {formatBRL(row.count ? row.total / row.count : 0)}</p>
+                  <div className="flex items-center justify-between gap-2 rounded-lg border border-purple-100 px-3 py-2 text-sm">
+                    <span className="font-semibold text-purple-900">Delivery</span>
+                    <span className="font-bold text-purple-900">{financeTypeStats.delivery.count} pedidos — {formatBRL(financeTypeStats.delivery.total)}</span>
                   </div>
                 </div>
-              ))}
+              </div>
+              <div className="rounded-xl border border-purple-100 p-4">
+                <p className="font-bold text-purple-950">Por forma de pagamento</p>
+                <div className="mt-3 space-y-2">
+                  {[["pix", "Pix"], ["dinheiro", "Dinheiro"], ["cartao", "Cartão"], ["outros", "Não informado"]].map(([id, label]) => (
+                    <div key={id} className="flex items-center justify-between gap-2 rounded-lg border border-purple-100 px-3 py-2 text-sm">
+                      <span className="font-semibold text-purple-900">{label}</span>
+                      <span className="font-bold text-purple-900">{financePayStats[id].count} pedidos — {formatBRL(financePayStats[id].total)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
-          </div>
-          <div className="space-y-4">
-            <div className="rounded-xl border border-purple-100 p-4">
-              <p className="font-bold text-purple-950">Formas de pagamento</p>
-              <div className="mt-3 space-y-2">
-                {paymentOptions.map((payment) => (
-                  <div key={payment} className="flex items-center justify-between gap-2 rounded-lg border border-purple-100 px-3 py-2 text-sm">
-                    <span>{payment}</span>
-                    <span className="font-semibold text-purple-900">{rangeStats.payments[payment].count} pedidos — {formatBRL(rangeStats.payments[payment].total)}</span>
+          </section>
+
+          <section className="rounded-2xl border border-purple-100 bg-white">
+            <button onClick={() => setOpenSection((prev) => ({ ...prev, fechamento: !prev.fechamento }))} className="w-full flex items-center justify-between gap-2 p-4 text-left">
+              <span className="text-sm font-black text-purple-950">Fechamento de caixa</span>
+              <ChevronRight size={16} className={`shrink-0 text-purple-400 transition-transform ${openSection.fechamento ? "rotate-90" : ""}`} />
+            </button>
+            {openSection.fechamento && (
+              <div className="px-5 pb-5 space-y-4">
+                <div className="rounded-xl bg-purple-50 p-3">
+                  <p className="text-xs font-bold text-purple-500">Período do caixa</p>
+                  <p className="font-bold text-purple-950">{financeRangeLabel}</p>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="rounded-xl bg-purple-50 p-3"><p className="text-xs font-bold text-purple-500">Total de vendas</p><p className="mt-1 text-xl font-black text-purple-950">{rangeStats.count}</p></div>
+                  <div className="rounded-xl bg-emerald-50 p-3"><p className="text-xs font-bold text-emerald-600">Total líquido</p><p className="mt-1 text-xl font-black text-emerald-900">{formatBRL(rangeLiquidTotal)}</p></div>
+                  <div className="rounded-xl bg-red-50 p-3"><p className="text-xs font-bold text-red-500">Cancelamentos</p><p className="mt-1 text-xl font-black text-red-900">{formatBRL(rangeStats.canceledTotal)}</p></div>
+                  <div className="rounded-xl bg-purple-50 p-3"><p className="text-xs font-bold text-purple-500">Taxa de entrega</p><p className="mt-1 text-xl font-black text-purple-950">{formatBRL(rangeStats.delivery)}</p></div>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="rounded-xl border border-purple-100 p-3"><p className="text-xs font-bold text-purple-500">Recebido em dinheiro</p><p className="mt-1 text-lg font-black text-purple-950">{formatBRL(financePayStats.dinheiro.total)}</p><p className="text-xs font-semibold text-purple-500">{financePayStats.dinheiro.count} pedido(s)</p></div>
+                  <div className="rounded-xl border border-purple-100 p-3"><p className="text-xs font-bold text-purple-500">Recebido em cartão</p><p className="mt-1 text-lg font-black text-purple-950">{formatBRL(financePayStats.cartao.total)}</p><p className="text-xs font-semibold text-purple-500">{financePayStats.cartao.count} pedido(s)</p></div>
+                  <div className="rounded-xl border border-purple-100 p-3"><p className="text-xs font-bold text-purple-500">Recebido em Pix</p><p className="mt-1 text-lg font-black text-purple-950">{formatBRL(financePayStats.pix.total)}</p><p className="text-xs font-semibold text-purple-500">{financePayStats.pix.count} pedido(s)</p></div>
+                  <div className="rounded-xl border border-purple-100 p-3"><p className="text-xs font-bold text-purple-500">Não informado</p><p className="mt-1 text-lg font-black text-purple-950">{formatBRL(financePayStats.outros.total)}</p><p className="text-xs font-semibold text-purple-500">{financePayStats.outros.count} pedido(s)</p></div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="rounded-xl border border-purple-100 bg-purple-50/50 p-3"><p className="text-xs font-bold text-purple-500">Pedidos no balcão</p><p className="mt-1 text-lg font-black text-purple-950">{financeTypeStats.balcao.count} pedidos</p><p className="text-sm font-bold text-purple-700">{formatBRL(financeTypeStats.balcao.total)}</p></div>
+                  <div className="rounded-xl border border-purple-100 bg-purple-50/50 p-3"><p className="text-xs font-bold text-purple-500">Pedidos de delivery</p><p className="mt-1 text-lg font-black text-purple-950">{financeTypeStats.delivery.count} pedidos</p><p className="text-sm font-bold text-purple-700">{formatBRL(financeTypeStats.delivery.total)}</p></div>
+                </div>
+                <div className="flex flex-wrap items-center gap-3 border-t border-purple-100 pt-3">
+                  <button onClick={toggleCounterClosed} className={`rounded-xl px-4 py-2 text-sm font-bold text-white ${counter.closed ? "bg-amber-700 hover:bg-amber-800" : "bg-purple-800 hover:bg-purple-900"}`}>{counter.closed ? "Reabrir caixa" : "Fechar caixa"}</button>
+                  {counter.closed && <span className="text-sm font-bold text-emerald-700">✅ Caixa fechado{counter.closed_at ? ` em ${new Date(counter.closed_at).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}` : ""}</span>}
+                </div>
+              </div>
+            )}
+          </section>
+
+          <section className="rounded-2xl border border-purple-100 bg-white">
+            <button onClick={() => setOpenSection((prev) => ({ ...prev, balcaomanual: !prev.balcaomanual }))} className="w-full flex items-center justify-between gap-2 p-4 text-left">
+              <span className="text-sm font-black text-purple-950">Vendas manuais do balcão</span>
+              <ChevronRight size={16} className={`shrink-0 text-purple-400 transition-transform ${openSection.balcaomanual ? "rotate-90" : ""}`} />
+            </button>
+            {openSection.balcaomanual && (
+              <div className="px-5 pb-5 space-y-4">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-sm text-purple-600">Informe apenas os totais manuais de {selectedDate}.</p>
+                  {counterLoading && <span className="text-xs text-purple-400">Carregando...</span>}
+                </div>
+                <div className="grid sm:grid-cols-2 gap-3">
+                  {counterRows.map(([payment, countKey, totalKey]) => (
+                    <div key={payment} className="rounded-xl border border-purple-100 p-3">
+                      <p className="font-bold text-purple-950">{payment}</p>
+                      <div className="mt-2 grid grid-cols-2 gap-2">
+                        <label className="text-xs text-purple-600">Quantidade<input type="number" min="0" step="1" value={counter[countKey]} onChange={(event) => updateCounter(countKey, event.target.value)} className="mt-1 w-full rounded-lg border border-purple-200 px-2 py-1.5 text-sm" /></label>
+                        <label className="text-xs text-purple-600">Valor<input type="number" min="0" step="0.01" value={counter[totalKey]} onChange={(event) => updateCounter(totalKey, event.target.value)} className="mt-1 w-full rounded-lg border border-purple-200 px-2 py-1.5 text-sm" /></label>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-purple-100 pt-3">
+                  <p className="font-bold text-purple-950">Total balcão: {counterSales} vendas — {formatBRL(counterTotal)}</p>
+                  <button onClick={() => saveCounter()} className="rounded-xl bg-purple-800 px-4 py-2 text-sm font-bold text-white hover:bg-purple-900">Salvar vendas do balcão</button>
+                </div>
+                <div className="flex flex-wrap items-center gap-3 text-sm">
+                  {counterSaved && <span className="text-emerald-600">Salvo</span>}
+                  {counterError && <span className="text-red-600">{counterError}</span>}
+                </div>
+              </div>
+            )}
+          </section>
+
+          <section className="rounded-2xl border border-purple-100 bg-white">
+            <button onClick={() => setOpenSection((prev) => ({ ...prev, detalhes: !prev.detalhes }))} className="w-full flex items-center justify-between gap-2 p-4 text-left">
+              <span className="text-sm font-black text-purple-950">Detalhes do período</span>
+              <ChevronRight size={16} className={`shrink-0 text-purple-400 transition-transform ${openSection.detalhes ? "rotate-90" : ""}`} />
+            </button>
+            {openSection.detalhes && (
+              <div className="px-5 pb-5 space-y-4">
+                <div className="flex flex-wrap gap-3">
+                  <div className="rounded-lg border border-purple-100 bg-purple-50/50 px-3 py-2 text-sm"><span className="text-purple-500">Valor em produtos (açaí)</span> <strong className="text-purple-950">{formatBRL(rangeStats.products)}</strong></div>
+                  <div className="rounded-lg border border-purple-100 bg-purple-50/50 px-3 py-2 text-sm"><span className="text-purple-500">Taxa de entrega</span> <strong className="text-purple-950">{formatBRL(rangeStats.delivery)}</strong></div>
+                </div>
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <div className="rounded-xl border border-purple-100 p-4">
+                    <p className="font-bold text-purple-950">Faturamento por dia</p>
+                    {byDaySales.length === 0 && <p className="mt-2 text-sm text-purple-400">Sem vendas no período.</p>}
+                    <div className="mt-3 space-y-2">
+                      {byDaySales.map((row) => (
+                        <div key={row.date} className="flex items-center justify-between gap-2 rounded-lg bg-purple-50/60 px-3 py-2 text-sm">
+                          <div>
+                            <p className="font-bold text-purple-950">{formatShortDateKey(row.date)}</p>
+                            <p className="text-xs font-semibold text-purple-500">{row.count} pedido(s)</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="font-bold text-purple-950">{formatBRL(row.total)}</p>
+                            <p className="text-xs text-purple-500">Ticket: {formatBRL(row.count ? row.total / row.count : 0)}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                ))}
-              </div>
-            </div>
-            <div className="rounded-xl border border-purple-100 p-4">
-              <p className="font-bold text-purple-950">Produtos mais vendidos</p>
-              {topProducts.length === 0 && <p className="mt-2 text-sm text-purple-400">Sem dados no período.</p>}
-              <div className="mt-3 space-y-2">
-                {topProducts.map((product, index) => (
-                  <div key={product.label} className="flex items-center justify-between gap-2 rounded-lg border border-purple-100 px-3 py-2 text-sm">
-                    <span className="min-w-0"><span className="font-bold text-purple-400">{index + 1}.</span> <span className="font-semibold text-purple-950">{product.label}</span> <span className="text-xs text-purple-500">×{product.qty}</span></span>
-                    <span className="font-bold text-purple-950">{formatBRL(product.total)}</span>
+                  <div className="rounded-xl border border-purple-100 p-4">
+                    <p className="font-bold text-purple-950">Produtos mais vendidos</p>
+                    {topProducts.length === 0 && <p className="mt-2 text-sm text-purple-400">Sem dados no período.</p>}
+                    <div className="mt-3 space-y-2">
+                      {topProducts.map((product, index) => (
+                        <div key={product.label} className="flex items-center justify-between gap-2 rounded-lg border border-purple-100 px-3 py-2 text-sm">
+                          <span className="min-w-0"><span className="font-bold text-purple-400">{index + 1}.</span> <span className="font-bold text-purple-950">{product.label}</span> <span className="text-xs font-medium text-purple-500">×{product.qty}</span></span>
+                          <span className="font-bold text-purple-950">{formatBRL(product.total)}</span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                ))}
+                </div>
               </div>
-            </div>
-          </div>
-        </div>
-      </section>
-      )}
-      {showFinance && financeTab === "balcao" && (
-      <section className="rounded-2xl border border-purple-100 bg-white p-5 space-y-4">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-wide text-purple-500">Vendas do balcão</p>
-            <p className="text-sm text-purple-600">Informe apenas os totais manuais de {selectedDate}.</p>
-          </div>
-          {counterLoading && <span className="text-xs text-purple-400">Carregando...</span>}
-        </div>
-        <div className="grid sm:grid-cols-2 gap-3">
-          {counterRows.map(([payment, countKey, totalKey]) => (
-            <div key={payment} className="rounded-xl border border-purple-100 p-3">
-              <p className="font-semibold text-purple-950">{payment}</p>
-              <div className="mt-2 grid grid-cols-2 gap-2">
-                <label className="text-xs text-purple-600">Quantidade<input type="number" min="0" step="1" value={counter[countKey]} onChange={(event) => updateCounter(countKey, event.target.value)} className="mt-1 w-full rounded-lg border border-purple-200 px-2 py-1.5 text-sm" /></label>
-                <label className="text-xs text-purple-600">Valor<input type="number" min="0" step="0.01" value={counter[totalKey]} onChange={(event) => updateCounter(totalKey, event.target.value)} className="mt-1 w-full rounded-lg border border-purple-200 px-2 py-1.5 text-sm" /></label>
+            )}
+          </section>
+
+          <section className="rounded-2xl border border-purple-100 bg-white">
+            <button onClick={() => setOpenSection((prev) => ({ ...prev, historico: !prev.historico }))} className="w-full flex items-center justify-between gap-2 p-4 text-left">
+              <span className="text-sm font-black text-purple-950">Histórico de fechamentos</span>
+              <ChevronRight size={16} className={`shrink-0 text-purple-400 transition-transform ${openSection.historico ? "rotate-90" : ""}`} />
+            </button>
+            {openSection.historico && (
+              <div className="px-5 pb-5 space-y-2">
+                {cashHistory.length === 0 && <p className="text-sm text-purple-400">Nenhum fechamento registrado.</p>}
+                {cashHistory.map((item) => {
+                  const count = [item.pix_count, item.cash_count, item.credit_count, item.debit_count].reduce((sum, value) => sum + (Number(value) || 0), 0);
+                  const total = [item.pix_total, item.cash_total, item.credit_total, item.debit_total].reduce((sum, value) => sum + (Number(value) || 0), 0);
+                  return <button key={item.date} onClick={() => setSelectedDate(item.date)} className="w-full flex items-center justify-between rounded-lg border border-purple-100 px-3 py-2 text-left hover:bg-purple-50"><span className="text-sm font-bold text-purple-900">{item.date}</span><span className="text-xs font-semibold text-purple-600">{count} vendas · {formatBRL(total)} {item.closed ? "✅" : ""}</span></button>;
+                })}
               </div>
-            </div>
-          ))}
+            )}
+          </section>
         </div>
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-purple-100 pt-3">
-          <p className="font-bold text-purple-950">Total balcão: {counterSales} vendas — {formatBRL(counterTotal)}</p>
-          <button onClick={() => saveCounter()} className="rounded-xl bg-purple-800 px-4 py-2 text-sm font-bold text-white hover:bg-purple-900">Salvar vendas do balcão</button>
-        </div>
-        <div className="flex flex-wrap items-center gap-3 text-sm">
-          {counterSaved && <span className="text-emerald-600">Salvo</span>}
-          {counterError && <span className="text-red-600">{counterError}</span>}
-        </div>
-      </section>
-      )}
-      {showFinance && financeTab === "fechamento" && (
-      <section className="rounded-2xl border border-purple-100 bg-white p-5 space-y-4">
-        <p className="text-xs font-bold uppercase tracking-wide text-purple-500">Fechamento de caixa</p>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-          {[["Delivery", `${dailyOrders.length} pedidos · ${formatBRL(summary.total)}`], ["Balcão", `${counterSales} vendas · ${formatBRL(counterTotal)}`], ["Total geral", `${generalSales} vendas · ${formatBRL(generalTotal)}`]].map(([label, value]) => <div key={label} className="rounded-xl bg-purple-50 p-3"><p className="text-xs text-purple-500">{label}</p><p className="mt-1 font-bold text-purple-950">{value}</p></div>)}
-        </div>
-        <div className="grid sm:grid-cols-2 gap-2">
-          {paymentOptions.map((payment) => {
-            const delivery = summary.payments[payment];
-            const counterRow = counterRows.find(([name]) => name === payment);
-            const counterCount = counterRow ? Number(counter[counterRow[1]]) || 0 : 0;
-            const counterValue = counterRow ? Number(counter[counterRow[2]]) || 0 : 0;
-            return <div key={payment} className="rounded-lg border border-purple-100 px-3 py-2 text-sm"><p className="font-semibold text-purple-950">{payment}</p><p>Delivery: {delivery.count} · {formatBRL(delivery.total)}</p><p>Balcão: {counterCount} · {formatBRL(counterValue)}</p><p className="font-bold">Total: {counterCount + delivery.count} · {formatBRL(counterValue + delivery.total)}</p></div>;
-          })}
-        </div>
-        <div className="flex flex-wrap items-center gap-3 border-t border-purple-100 pt-3">
-          <button onClick={toggleCounterClosed} className={`rounded-xl px-4 py-2 text-sm font-bold text-white ${counter.closed ? "bg-amber-700 hover:bg-amber-800" : "bg-purple-800 hover:bg-purple-900"}`}>{counter.closed ? "Reabrir caixa" : "Fechar caixa"}</button>
-          {counter.closed && <span className="text-sm text-emerald-700">✅ Caixa fechado{counter.closed_at ? ` em ${new Date(counter.closed_at).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}` : ""}</span>}
-        </div>
-      </section>
-      )}
-      {showFinance && financeTab === "historico" && (
-      <section className="rounded-2xl border border-purple-100 bg-white p-5">
-        <p className="text-xs font-bold uppercase tracking-wide text-purple-500">Histórico de fechamentos</p>
-        <div className="mt-3 space-y-2">
-          {cashHistory.length === 0 && <p className="text-sm text-purple-400">Nenhum fechamento registrado.</p>}
-          {cashHistory.map((item) => {
-            const count = [item.pix_count, item.cash_count, item.credit_count, item.debit_count].reduce((sum, value) => sum + (Number(value) || 0), 0);
-            const total = [item.pix_total, item.cash_total, item.credit_total, item.debit_total].reduce((sum, value) => sum + (Number(value) || 0), 0);
-            return <button key={item.date} onClick={() => setSelectedDate(item.date)} className="w-full flex items-center justify-between rounded-lg border border-purple-100 px-3 py-2 text-left hover:bg-purple-50"><span className="text-sm font-semibold text-purple-900">{item.date}</span><span className="text-xs text-purple-600">{count} vendas · {formatBRL(total)} {item.closed ? "✅" : ""}</span></button>;
-          })}
-        </div>
-      </section>
       )}
       <div className="flex items-center justify-between gap-3">
-        <p className="text-xs font-bold uppercase tracking-wide text-purple-500">{showFinance && financeTab === "resumo" ? "Pedidos do período" : "Pedidos"}</p>
-        {(showFinance && financeTab === "resumo" || !showFinance) && (
-          <p className="text-xs text-purple-400">{ordersToDisplay.length} pedido(s)</p>
-        )}
+        <p className="text-xs font-bold uppercase tracking-wide text-purple-500">{showFinance ? "Pedidos do período" : "Pedidos"}</p>
+        <p className="text-xs font-bold text-purple-400">{ordersToDisplay.length} pedido(s)</p>
       </div>
 
-      {((showFinance && financeTab === "resumo") || !showFinance) && ordersToDisplay.length === 0 && (
+      {ordersToDisplay.length === 0 && (
         <p className="text-center text-purple-400 py-10">
-          {showAllOrders ? "Nenhum pedido encontrado." : `Nenhum pedido encontrado em ${selectedDate}.`}
+          {showFinance ? "Nenhum pedido encontrado para o período e filtros selecionados." : showAllOrders ? "Nenhum pedido encontrado." : `Nenhum pedido encontrado em ${selectedDate}.`}
         </p>
       )}
 
@@ -3780,8 +3920,18 @@ function AdminOrdersTab({ orders, setOrders, showFinance = false }) {
               className="flex min-w-0 flex-1 flex-wrap sm:flex-nowrap items-center gap-x-3 gap-y-1 p-1 text-left rounded-xl"
             >
               <span className="w-24 shrink-0 font-mono text-xs font-bold text-purple-500">{shortId(o.id)}</span>
-              <span className="min-w-0 flex-1 truncate text-sm font-semibold text-purple-950">{o.customer.name}</span>
-              <span className="hidden md:inline shrink-0 text-xs text-purple-500">{orderTimeLabel(o.createdAt)}</span>
+              {showFinance ? (
+                <>
+                  <span className="min-w-0 flex-1 truncate text-sm font-bold text-purple-950">{getOrderTypeLabel(o)}</span>
+                  <span className="hidden md:inline shrink-0 text-xs font-semibold text-purple-500">{orderTimeLabel(o.createdAt)}</span>
+                  <span className="hidden sm:inline shrink-0 text-xs font-bold text-purple-600">{o.paymentMethod || "Não informado"}</span>
+                </>
+              ) : (
+                <>
+                  <span className="min-w-0 flex-1 truncate text-sm font-bold text-purple-950">{o.customer.name}</span>
+                  <span className="hidden md:inline shrink-0 text-xs font-semibold text-purple-500">{orderTimeLabel(o.createdAt)}</span>
+                </>
+              )}
               <span className="shrink-0 text-sm font-bold text-purple-950">{formatBRL(o.total)}</span>
               {statusPill(o.status)}
               <ChevronRight size={16} className="shrink-0 text-purple-300" />
@@ -3856,6 +4006,7 @@ function AdminOrdersTab({ orders, setOrders, showFinance = false }) {
             </div>
             <div className="space-y-1 text-sm">
               <p><strong>Cliente:</strong> {selectedOrder.customer?.name || "Não informado"}</p>
+              <p><strong>Tipo:</strong> {getOrderTypeLabel(selectedOrder)}</p>
               <p><strong>Telefone:</strong> {selectedOrder.customer?.phone || "Não informado"}</p>
               {selectedOrder.customer?.address && <p><strong>Endereço:</strong> {selectedOrder.customer.address}</p>}
               {selectedOrder.deliveryRegion && <p><strong>Região:</strong> {selectedOrder.deliveryRegion}</p>}
