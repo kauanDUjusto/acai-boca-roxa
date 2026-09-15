@@ -484,7 +484,7 @@ async function playNewOrderSound() {
                 <span className="font-medium text-purple-950 break-words whitespace-normal leading-snug">{ing.name}</span>
                 {active && <Check size={15} className="text-purple-700 shrink-0" />}
               </div>
-              <span className={`text-xs break-words whitespace-normal leading-snug ${!showPrices && !active ? "text-emerald-600" : active && !showPrices ? (selected.findIndex((item) => item.id === ing.id) >= includedLimit ? "text-pink-600" : "text-emerald-600") : ing.free ? "text-emerald-600" : "text-pink-600"}`}>
+              <span className={`text-xs leading-snug ${!showPrices && !active ? "whitespace-nowrap text-emerald-600" : "break-words whitespace-normal " + (active && !showPrices ? (selected.findIndex((item) => item.id === ing.id) >= includedLimit ? "text-pink-600" : "text-emerald-600") : ing.free ? "text-emerald-600" : "text-pink-600")}`}>
                 {!showPrices && active
                   ? selected.findIndex((item) => item.id === ing.id) >= includedLimit
                     ? `${extraLabel} +${formatBRL(getExtraPrice ? getExtraPrice(ing) : PRODUCT_RULES.excessPrice)}`
