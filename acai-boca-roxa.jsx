@@ -1280,6 +1280,7 @@ function CheckoutModal({ cart, prices, config, deliveryStatus, onClose, onSent }
     const deliveryFee = orderType === "retirada" ? 0 : DELIVERY_FEES[form.deliveryRegion];
     const total = subtotal + (deliveryFee ?? 0);
     const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+    const setPhone = (e) => setForm((f) => ({ ...f, phone: e.target.value.replace(/\D/g, "") }));
     const canSend = form.name.trim() && form.phone.trim() && form.payment && (orderType === "retirada" || (form.address.trim() && deliveryFee !== undefined)) && deliveryStatus.open;
 
     // IMPORTANTE: o WhatsApp é aberto de forma síncrona, antes de qualquer
@@ -1370,7 +1371,7 @@ function CheckoutModal({ cart, prices, config, deliveryStatus, onClose, onSent }
           <div><label className="text-sm font-medium text-purple-800">Nome</label>
             <input value={form.name} onChange={set("name")} className="mt-1 w-full rounded-xl border border-purple-200 px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-purple-400" placeholder="Seu nome" /></div>
           <div><label className="text-sm font-medium text-purple-800">Telefone</label>
-            <input value={form.phone} onChange={set("phone")} className="mt-1 w-full rounded-xl border border-purple-200 px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-purple-400" placeholder="(00) 00000-0000" /></div>
+            <input value={form.phone} onChange={setPhone} inputMode="numeric" className="mt-1 w-full rounded-xl border border-purple-200 px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-purple-400" placeholder="(00) 00000-0000" /></div>
 
           {orderType === "delivery" && (
             <>
@@ -2779,6 +2780,7 @@ function AdminOrdersTab({ orders, setOrders, showFinance = false }) {
   const [customRangeStart, setCustomRangeStart] = useState(() => saoPauloRelativeDateKey(-6));
   const [customRangeEnd, setCustomRangeEnd] = useState(() => saoPauloDateKey(new Date()));
   const [selectedOrder, setSelectedOrder] = useState(null);
+  const [cancelTarget, setCancelTarget] = useState(null);
   const [counter, setCounter] = useState(EMPTY_COUNTER_REGISTER);
   const [counterLoading, setCounterLoading] = useState(false);
   const [counterSaved, setCounterSaved] = useState(false);
@@ -2795,6 +2797,7 @@ function AdminOrdersTab({ orders, setOrders, showFinance = false }) {
 
   // Resumo mensal
   const monthlyOrders = sorted.filter((order) => {
+    if (order.status === "cancelado") return false;
     const orderDate = saoPauloDateKey(order.createdAt);
     return orderDate.startsWith(selectedMonth);
   });
@@ -2815,7 +2818,7 @@ function AdminOrdersTab({ orders, setOrders, showFinance = false }) {
   const monthlyAverageTicket = monthlySummary.totalOrders > 0 ? monthlySummary.total / monthlySummary.totalOrders : 0;
 
   // Filtro diário (mantido para compatibilidade com financeiro)
-  const dailyOrders = sorted.filter((order) => saoPauloDateKey(order.createdAt) === selectedDate);
+  const dailyOrders = sorted.filter((order) => order.status !== "cancelado" && saoPauloDateKey(order.createdAt) === selectedDate);
   const summary = dailyOrders.reduce((result, order) => {
     const payment = paymentOptions.includes(order.paymentMethod) ? order.paymentMethod : "Não informado";
     result.products += Number(order.subtotal) || 0;
@@ -2847,14 +2850,16 @@ function AdminOrdersTab({ orders, setOrders, showFinance = false }) {
     ["aguardando_motoboy", "Aguardando motoboy"],
     ["a_caminho", "A caminho"],
     ["concluido", "Concluídos"],
+    ["cancelado", "Cancelados"],
   ];
   const statusSummary = filteredOrders.reduce((acc, order) => {
     acc.total += 1;
     if (order.status === "novo") acc.novo += 1;
     if (order.status === "preparando" || order.status === "aguardando_motoboy" || order.status === "a_caminho") acc.emAndamento += 1;
     if (order.status === "concluido") acc.concluido += 1;
+    if (order.status === "cancelado") acc.cancelado += 1;
     return acc;
-  }, { total: 0, novo: 0, emAndamento: 0, concluido: 0 });
+  }, { total: 0, novo: 0, emAndamento: 0, concluido: 0, cancelado: 0 });
 
   const todayDateKey = saoPauloDateKey(new Date());
   const customRangeInvalid = financeRange === "customRange" && customRangeStart > customRangeEnd;
@@ -2882,27 +2887,38 @@ function AdminOrdersTab({ orders, setOrders, showFinance = false }) {
   const formatShortDateKey = (key) => (key ? key.split("-").reverse().slice(0, 2).join("/") : "");
   const financeRangeLabel = financeRange === "7d" ? "Últimos 7 dias" : financeRange === "30d" ? "Últimos 30 dias" : financeRange === "today" ? "Hoje" : financeRange === "customRange" ? `Período personalizado: ${formatShortDateKey(customRangeStart)} a ${formatShortDateKey(customRangeEnd)}` : `Dia ${formatShortDateKey(selectedDate)}`;
 
+  const validRangeOrders = financeRangeOrders.filter((order) => order.status !== "cancelado");
   const rangeStats = financeRangeOrders.reduce((result, order) => {
     const payment = paymentOptions.includes(order.paymentMethod) ? order.paymentMethod : "Não informado";
-    result.total += Number(order.total) || 0;
-    result.count += 1;
-    result.products += Number(order.subtotal) || 0;
-    result.delivery += Number(order.deliveryFee) || 0;
-    result.payments[payment].count += 1;
-    result.payments[payment].total += Number(order.total) || 0;
+    const canceled = order.status === "cancelado";
+    const value = Number(order.total) || 0;
+    result.total += value;
+    if (canceled) {
+      result.canceledCount += 1;
+      result.canceledTotal += value;
+    } else {
+      result.count += 1;
+      result.products += Number(order.subtotal) || 0;
+      result.delivery += Number(order.deliveryFee) || 0;
+      result.payments[payment].count += 1;
+      result.payments[payment].total += value;
+    }
     return result;
   }, {
     total: 0,
     count: 0,
+    canceledCount: 0,
+    canceledTotal: 0,
     products: 0,
     delivery: 0,
     payments: Object.fromEntries(paymentOptions.map((payment) => [payment, { count: 0, total: 0 }])),
   });
-  const rangeAverageTicket = rangeStats.count > 0 ? rangeStats.total / rangeStats.count : 0;
+  const rangeLiquidTotal = rangeStats.total - rangeStats.canceledTotal;
+  const rangeAverageTicket = rangeStats.count > 0 ? rangeLiquidTotal / rangeStats.count : 0;
 
   const byDaySales = (() => {
     const map = new Map();
-    for (const order of financeRangeOrders) {
+    for (const order of validRangeOrders) {
       const key = saoPauloDateKey(order.createdAt);
       const row = map.get(key) || { date: key, count: 0, total: 0 };
       row.count += 1;
@@ -2914,7 +2930,7 @@ function AdminOrdersTab({ orders, setOrders, showFinance = false }) {
 
   const topProducts = (() => {
     const map = new Map();
-    for (const order of financeRangeOrders) {
+    for (const order of validRangeOrders) {
       for (const item of order.items || []) {
         const label = itemLabel(item.category, item.size);
         const row = map.get(label) || { label, qty: 0, total: 0 };
@@ -2936,6 +2952,7 @@ function AdminOrdersTab({ orders, setOrders, showFinance = false }) {
       aguardando_motoboy: "bg-orange-100 text-orange-700",
       a_caminho: "bg-purple-100 text-purple-700",
       concluido: "bg-emerald-100 text-emerald-700",
+      cancelado: "bg-red-100 text-red-700",
     };
     const labels = {
       novo: "Novo",
@@ -2943,6 +2960,7 @@ function AdminOrdersTab({ orders, setOrders, showFinance = false }) {
       aguardando_motoboy: "Aguardando motoboy",
       a_caminho: "A caminho",
       concluido: "Concluído",
+      cancelado: "Cancelado",
     };
     return (
       <span className={`inline-block shrink-0 text-xs font-semibold px-3 py-1 rounded-full ${styles[status] || "bg-gray-100 text-gray-700"}`}>
@@ -2952,6 +2970,7 @@ function AdminOrdersTab({ orders, setOrders, showFinance = false }) {
   };
   const statusActions = (order) => {
     if (!order) return null;
+    if (order.status === "cancelado") return null;
     if (order.status === "novo") {
       return <button onClick={() => setOrderStatus(order.id, "preparando")} className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg border border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-colors"><Check size={14} /> Aceitar pedido</button>;
     }
@@ -2968,6 +2987,19 @@ function AdminOrdersTab({ orders, setOrders, showFinance = false }) {
       return <span className="text-xs font-semibold text-emerald-600 px-2 py-1">✓ Pedido concluído</span>;
     }
     return null;
+  };
+  const cancelButton = (order) => {
+    if (!order || order.status === "cancelado") return null;
+    return (
+      <button onClick={() => setCancelTarget(order)} className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg border border-red-200 text-red-700 bg-red-50 hover:bg-red-100 transition-colors">
+        <Trash2 size={14} /> Cancelar pedido
+      </button>
+    );
+  };
+  const handleCancelOrder = async () => {
+    if (!cancelTarget) return;
+    await setOrderStatus(cancelTarget.id, "cancelado");
+    setCancelTarget(null);
   };
 
   useEffect(() => {
@@ -3091,6 +3123,11 @@ function AdminOrdersTab({ orders, setOrders, showFinance = false }) {
       return;
     }
 
+    if (order.status === "cancelado") {
+      console.warn("Pedido cancelado não pode ter o status alterado.");
+      return;
+    }
+
     console.log(`Alterando status do pedido ${id} de "${order.status}" para "${newStatus}"`);
 
     const updateData = {
@@ -3163,7 +3200,7 @@ function AdminOrdersTab({ orders, setOrders, showFinance = false }) {
     <div className="space-y-4">
       {!showFinance && (
         <section className="space-y-4">
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
             <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
               <p className="text-xs font-bold uppercase tracking-wide text-amber-600">Pedidos novos</p>
               <p className="mt-1 text-3xl font-black text-amber-900">{statusSummary.novo}</p>
@@ -3175,6 +3212,10 @@ function AdminOrdersTab({ orders, setOrders, showFinance = false }) {
             <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
               <p className="text-xs font-bold uppercase tracking-wide text-emerald-600">Concluídos</p>
               <p className="mt-1 text-3xl font-black text-emerald-900">{statusSummary.concluido}</p>
+            </div>
+            <div className="rounded-2xl border border-red-200 bg-red-50 p-4">
+              <p className="text-xs font-bold uppercase tracking-wide text-red-600">Cancelados</p>
+              <p className="mt-1 text-3xl font-black text-red-900">{statusSummary.cancelado}</p>
             </div>
             <div className="rounded-2xl border border-purple-200 bg-purple-50 p-4">
               <p className="text-xs font-bold uppercase tracking-wide text-purple-600">Total de pedidos</p>
@@ -3304,13 +3345,15 @@ function AdminOrdersTab({ orders, setOrders, showFinance = false }) {
           </div>
         )}
 
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-          <div className="rounded-xl bg-purple-50 p-4"><p className="text-xs text-purple-500">Faturamento do período</p><p className="mt-1 text-2xl font-black text-purple-950">{formatBRL(rangeStats.total)}</p></div>
-          <div className="rounded-xl bg-purple-50 p-4"><p className="text-xs text-purple-500">Vendas no período</p><p className="mt-1 text-2xl font-black text-purple-950">{rangeStats.count}</p></div>
-          <div className="rounded-xl bg-purple-50 p-4"><p className="text-xs text-purple-500">Ticket médio</p><p className="mt-1 text-2xl font-black text-purple-950">{formatBRL(rangeAverageTicket)}</p></div>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="rounded-xl bg-purple-50 p-4"><p className="text-xs text-purple-500">Faturamento bruto (período)</p><p className="mt-1 text-2xl font-black text-purple-950">{formatBRL(rangeStats.total)}</p></div>
+          <div className="rounded-xl bg-red-50 p-4"><p className="text-xs text-red-500">Cancelamentos</p><p className="mt-1 text-2xl font-black text-red-900">{rangeStats.canceledCount} · {formatBRL(rangeStats.canceledTotal)}</p></div>
+          <div className="rounded-xl bg-emerald-50 p-4"><p className="text-xs text-emerald-600">Faturamento líquido</p><p className="mt-1 text-2xl font-black text-emerald-900">{formatBRL(rangeLiquidTotal)}</p></div>
+          <div className="rounded-xl bg-purple-50 p-4"><p className="text-xs text-purple-500">Vendas no período (válidas)</p><p className="mt-1 text-2xl font-black text-purple-950">{rangeStats.count}</p></div>
         </div>
 
         <div className="flex flex-wrap gap-3">
+          <div className="rounded-lg border border-purple-100 bg-purple-50/50 px-3 py-2 text-sm"><span className="text-purple-500">Ticket médio (vendas válidas)</span> <strong className="text-purple-950">{formatBRL(rangeAverageTicket)}</strong></div>
           <div className="rounded-lg border border-purple-100 bg-purple-50/50 px-3 py-2 text-sm"><span className="text-purple-500">Valor em produtos (açaí)</span> <strong className="text-purple-950">{formatBRL(rangeStats.products)}</strong></div>
           <div className="rounded-lg border border-purple-100 bg-purple-50/50 px-3 py-2 text-sm"><span className="text-purple-500">Taxa de entrega</span> <strong className="text-purple-950">{formatBRL(rangeStats.delivery)}</strong></div>
         </div>
@@ -3457,7 +3500,7 @@ function AdminOrdersTab({ orders, setOrders, showFinance = false }) {
               {statusPill(o.status)}
               <ChevronRight size={16} className="shrink-0 text-purple-300" />
             </button>
-            <div className="shrink-0">{statusActions(o)}</div>
+            <div className="shrink-0 flex flex-wrap items-center gap-2">{statusActions(o)}{cancelButton(o)}</div>
           </div>
         ))}
       </div>
@@ -3511,8 +3554,14 @@ function AdminOrdersTab({ orders, setOrders, showFinance = false }) {
             {statusPill(selectedOrder.status)}
             <div className="flex flex-wrap gap-2">
               {statusActions(selectedOrder)}
+              {cancelButton(selectedOrder)}
             </div>
           </div>
+          {selectedOrder.status === "cancelado" && (
+            <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 no-print">
+              Este pedido foi cancelado e não é considerado nas vendas válidas. Os dados e o valor original foram preservados.
+            </p>
+          )}
           <div className="print-order space-y-4 text-purple-950">
             <div className="border-b border-purple-200 pb-3">
               <h1 className="text-xl font-black">Açaí Boca Roxa</h1>
@@ -3566,6 +3615,22 @@ function AdminOrdersTab({ orders, setOrders, showFinance = false }) {
               <p className="flex justify-between text-lg"><strong>Total</strong><strong>{formatBRL(selectedOrder.total)}</strong></p>
             </div>
           </div>
+        </Modal>
+      )}
+      {cancelTarget && (
+        <Modal
+          title="Cancelar este pedido?"
+          onClose={() => setCancelTarget(null)}
+          footer={
+            <div className="flex gap-2">
+              <button onClick={() => setCancelTarget(null)} className="flex-1 rounded-xl border border-purple-200 px-4 py-3 font-semibold text-purple-800 hover:bg-purple-50">Voltar</button>
+              <button onClick={handleCancelOrder} className="flex-1 rounded-xl bg-red-600 px-4 py-3 font-bold text-white hover:bg-red-700">Cancelar pedido</button>
+            </div>
+          }
+        >
+          <p className="text-sm text-purple-700">
+            O pedido <strong>{shortId(cancelTarget.id)}</strong> continuará registrado no histórico, mas será retirado das vendas válidas do período.
+          </p>
         </Modal>
       )}
     </div>
