@@ -142,7 +142,7 @@ async function playNewOrderSound() {
   };
 
   const PRODUCT_RULES = {
-    excessPrice: 4,
+    excessPrice: 5,
     defaultToppingLimit: 1,
     cup: {
       acai: { 200: 2, 300: 4, 400: 4, 500: 4, 700: 6, 1000: 3 },
@@ -158,7 +158,8 @@ async function playNewOrderSound() {
   const TOPPING_OPTIONS = [
     "Caramelo", "Chocolate", "Morango", "Mel", "Leite Condensado", "Xarope de Guaraná",
   ].map((name) => ({ id: `cobertura-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`, name, free: true, type: "topping" }));
-  const DEFAULT_EXCESS_PRICE = 4;
+  const DEFAULT_EXCESS_PRICE = 5;
+  const M_AND_M_EXTRA_PRICE = 5;
   const DEFAULT_FRUIT_OPTIONS = [
     { id: "fruta-morango", name: "Morango", price: 4, free: false, type: "fruit" },
     { id: "fruta-banana", name: "Banana", price: 4, free: false, type: "fruit" },
@@ -172,7 +173,6 @@ async function playNewOrderSound() {
   ].map(([name, price]) => ({ id: `adicional-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`, name, price, free: false, type: "additional" }));
 
   const LAYER_LABELS = ["1ª camada", "2ª camada", "3ª camada"];
-  const CUP_700_INGREDIENT_LIMIT = 6;
   const is700ml = (category, size) => size === 700 && ["acai", "cupuacu", "casadinho"].includes(category);
 
   // ⚠️ PREÇOS DE EXEMPLO — o administrador pode alterar tudo isso pelo painel.
@@ -282,6 +282,7 @@ async function playNewOrderSound() {
   };
 
   const ingredientNameKey = (ing) => ing.name.trim().toLowerCase();
+  const getIngredientExtraPrice = (ing, baseExtraPrice) => (ingredientNameKey(ing) === "m&m" ? M_AND_M_EXTRA_PRICE : baseExtraPrice);
   const isFruit = (ing) => ing.type === "fruit" || FRUIT_NAMES.has(ingredientNameKey(ing));
   const normalIngredients = (ingredients) => ingredients.filter((ing) => !isFruit(ing) && !HIDDEN_OPTION_NAMES.has(ingredientNameKey(ing)));
   const getProductRule = (category, size) => {
@@ -289,14 +290,15 @@ async function playNewOrderSound() {
     if (category === "tigela") return { ingredientLimit: PRODUCT_RULES.tigela[size], fruitLimit: 2, toppingLimit: 1, cupSeparatedIngredients: false };
     return { ingredientLimit: PRODUCT_RULES.barca[size], fruitLimit: 2, toppingLimit: 1, cupSeparatedIngredients: false };
   };
-  const calculateProductPrice = ({ category, size, ingredients = [], fruits = [], additionalIngredients = [], topping = null }, prices, options = {}) => {
-    const { fruitOptions: fruitOpts = DEFAULT_FRUIT_OPTIONS, excessPrice: excess = DEFAULT_EXCESS_PRICE } = options;
+  const calculateProductPrice = ({ category, size, ingredients = [], fruits = [], extras = [], additionalIngredients = [], topping = null }, prices, options = {}) => {
+    const { fruitOptions: fruitOpts = DEFAULT_FRUIT_OPTIONS, excessPrice: excess = DEFAULT_EXCESS_PRICE, separateExtras = false } = options;
     const rule = getProductRule(category, size);
     const basePrice = prices[category][size];
-    const ingredientExtraCount = Math.max(0, ingredients.length - rule.ingredientLimit);
+    const extraIngredients = separateExtras ? extras : ingredients.slice(Math.max(0, rule.ingredientLimit));
+    const ingredientExtraCount = extraIngredients.length;
     const fruitExtraCount = Math.max(0, fruits.length - rule.fruitLimit);
     const ingredientAdditionalPrice = additionalIngredients.reduce((sum, ing) => sum + ingredientCost(ing), 0);
-    const ingredientExcessPrice = ingredientExtraCount * excess;
+    const ingredientExcessPrice = extraIngredients.reduce((sum, ing) => sum + getIngredientExtraPrice(ing, excess), 0);
     const fruitExcessPrice = fruits
       .slice(rule.fruitLimit)
       .reduce((sum, fruit) => {
@@ -541,7 +543,7 @@ async function playNewOrderSound() {
     MODAL: escolher ingredientes ao adicionar produto do cardápio
     ============================================================ */
 
-  function Cup700Visual({ layers }) {
+  function Cup700Visual({ layers, activeLayer }) {
     const configs = [
       { label: "1ª camada", bg: "bg-purple-700", textLight: true },
       { label: "2ª camada", bg: "bg-purple-400", textLight: true },
@@ -555,11 +557,12 @@ async function playNewOrderSound() {
         <div className="w-48 overflow-hidden rounded-b-2xl rounded-t-md border-x-2 border-b-2 border-purple-300 shadow-lg shadow-purple-900/10">
           {configs.map(({ label, bg, textLight }, i) => {
             const layerIngs = layers[i] || [];
+            const isActive = activeLayer === i;
             return (
-              <div key={label} className={`${bg} px-2.5 py-2 min-h-[56px] border-t border-white/30`}>
+              <div key={label} className={`${bg} px-2.5 py-2 min-h-[56px] border-t border-white/30 ${isActive ? "ring-2 ring-amber-300 ring-offset-1 ring-offset-white" : ""}`}>
                 <p className={`text-[10px] font-bold uppercase tracking-widest flex items-center justify-between gap-1 ${textLight ? "text-white/85" : "text-purple-900/70"}`}>
                   <span>{label}</span>
-                  <span className={`w-2 h-2 rounded-full shrink-0 ${layerIngs.length ? "bg-emerald-300" : "bg-white/40"}`} />
+                  <span className={`w-2 h-2 rounded-full shrink-0 ${isActive ? "bg-amber-300" : layerIngs.length ? "bg-emerald-300" : "bg-white/40"}`} />
                 </p>
                 <p className={`mt-1 text-[11px] font-semibold leading-snug break-words whitespace-normal ${textLight ? "text-white/95" : "text-purple-900/80"}`}>
                   {layerIngs.length ? layerIngs.map((x) => x.name).join(" + ") : "Sem ingrediente"}
@@ -573,103 +576,169 @@ async function playNewOrderSound() {
     );
   }
 
-  function Cup700View({ limit, layers, onToggleLayer, availableIngredients, extras, onToggleExtra, fruits, onToggleFruit, availableFruits, fruitOpts, excess, topping, setTopping, calculation }) {
-    const totalIngs = layers.reduce((s, l) => s + l.length, 0);
-    const layerBars = ["bg-purple-700", "bg-purple-400", "bg-purple-200"];
+  function Cup700View({ step, onStepChange, layers, onToggleLayer, onClearLayer, availableIngredients, extras, onToggleExtra, fruits, onToggleFruit, availableFruits, fruitOpts, excess, topping, setTopping, calculation }) {
     const layerLimit = 2;
+    const layerPositions = ["Topo", "Meio", "Fundo"];
+    const layerBars = ["bg-purple-700", "bg-purple-400", "bg-purple-200"];
+    const layerCount = (layers[step] || []).length;
+    const layerFull = layerCount >= layerLimit;
+
+    const stepTopRef = useRef(null);
+
+    const getScrollContainer = (el) => {
+      let node = el;
+      while (node && node.parentElement) {
+        node = node.parentElement;
+        const overflowY = window.getComputedStyle(node).overflowY;
+        if (overflowY === "auto" || overflowY === "scroll" || overflowY === "overlay") return node;
+      }
+      return null;
+    };
+
+    const scrollStepToTop = () => {
+      const el = stepTopRef.current;
+      if (!el) return;
+      const container = getScrollContainer(el);
+      if (!container) return;
+      const target = container.scrollTop + el.getBoundingClientRect().top - container.getBoundingClientRect().top;
+      container.scrollTo({ top: Math.max(0, target), behavior: "smooth" });
+    };
+
+    useEffect(() => {
+      scrollStepToTop();
+    }, [step]);
+
+    if (step === 3) {
+      return (
+        <div ref={stepTopRef}>
+          <div className="flex flex-col items-center">
+            <Cup700Visual layers={layers} />
+          </div>
+
+          <div className="mt-6 rounded-2xl border border-purple-100 p-4">
+            <p className="text-lg font-bold text-purple-950">Como ficará seu copo</p>
+            <div className="mt-3 space-y-3">
+              {LAYER_LABELS.map((label, i) => {
+                const layerIngs = layers[i] || [];
+                return (
+                  <div key={label} className="flex items-center gap-3">
+                    <span className={`w-3 h-9 rounded-full shrink-0 ${layerBars[i]} border border-purple-300`} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold text-purple-950">{label} <span className="font-medium text-purple-400">({layerPositions[i].toLowerCase()})</span></p>
+                      <p className={`text-sm break-words whitespace-normal leading-snug ${layerIngs.length ? "text-purple-700" : "text-purple-400"}`}>
+                        {layerIngs.length ? layerIngs.map((x) => x.name).join(" + ") : "Sem ingrediente"}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="mt-6 rounded-2xl border border-purple-100 p-4">
+            <p className="text-lg font-bold text-purple-950">🥤 Ingredientes extras</p>
+            <p className="text-sm font-semibold text-purple-800 mt-1">Os ingredientes extras vão em um copinho separado de 100 ml.</p>
+            <p className="text-xs text-purple-500 mt-0.5 mb-3">Cada extra soma +{formatBRL(excess)}.</p>
+            <IngredientGrid ingredients={availableIngredients} selected={extras} onToggle={onToggleExtra} showPrices={false} includedLimit={0} extraLabel="Ingrediente extra" getExtraPrice={(ing) => getIngredientExtraPrice(ing, excess)} fullNames />
+          </div>
+
+          <div className="mt-6 rounded-2xl border border-purple-100 p-4">
+            <p className="text-lg font-bold text-purple-950">🍓 Frutas extras</p>
+            <p className="text-sm font-semibold text-purple-800 mt-1">As frutas extras vão em um copinho separado de 100 ml.</p>
+            <p className="text-xs text-purple-500 mt-0.5 mb-3">Cada fruta custa o preço definido no cardápio.</p>
+            <IngredientGrid ingredients={availableFruits} selected={fruits} onToggle={onToggleFruit} showPrices={false} includedLimit={0} extraLabel="Fruta extra" getExtraPrice={(item) => { const fruit = (fruitOpts || []).find((f) => f.id === item.id); return fruit?.price ?? excess; }} fullNames />
+          </div>
+
+          <div className="mt-6">
+            <p className="text-lg font-bold text-purple-950 mb-3">🍫 Cobertura</p>
+            <div className="grid grid-cols-2 gap-2">
+              {TOPPING_OPTIONS.map((option) => (
+                <button key={option.id} onClick={() => setTopping(option)} className={`rounded-xl border px-3 py-3 text-left text-sm font-semibold ${topping?.id === option.id ? "border-purple-700 bg-purple-50 text-purple-900" : "border-purple-100 text-purple-800"}`}>
+                  {option.name}
+                  {topping?.id === option.id && <Check size={14} className="inline ml-2 text-purple-700" />}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-6 rounded-2xl bg-purple-900 text-white p-4 flex items-center justify-between">
+            <span className="font-bold">Preço total</span>
+            <span className="font-black text-lg">{formatBRL(calculation.total)}</span>
+          </div>
+
+          <button onClick={() => onStepChange(2)} className="mt-4 w-full py-3 rounded-xl border border-purple-800 text-purple-800 font-semibold hover:bg-purple-50 active:scale-[.98] transition-all">
+            ← Voltar para as camadas
+          </button>
+        </div>
+      );
+    }
 
     return (
-      <div>
+      <div ref={stepTopRef}>
         <div className="mb-4">
           <div className="flex items-center justify-between gap-2">
             <p className="text-xl font-black text-purple-950">🥤 Copo de 700 ml</p>
-            <span className="shrink-0 text-sm font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-full">{totalIngs} de {limit} ingredientes</span>
+            <div className="flex items-center gap-1.5">
+              {[0, 1, 2].map((i) => (
+                <span key={i} className={`w-2.5 h-2.5 rounded-full transition-colors ${i <= step ? "bg-purple-800" : "bg-purple-200"}`} />
+              ))}
+            </div>
           </div>
-          <p className="text-sm text-purple-500 mt-1.5 leading-relaxed">Escolha até 2 ingredientes para cada camada.</p>
+          <p className="text-sm text-purple-500 mt-1.5">Escolha até 2 ingredientes para cada camada.</p>
         </div>
 
-        <div className="flex flex-col items-center mb-6">
-          <Cup700Visual layers={layers} />
-          <div className="mt-3 flex items-center gap-4 text-xs font-semibold text-purple-600">
-            <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-purple-700" /> 1ª camada (topo)</span>
-            <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-purple-400" /> 2ª camada (meio)</span>
-            <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-purple-200 border border-purple-400" /> 3ª camada (fundo)</span>
-          </div>
+        <div className="flex flex-col items-center mb-5">
+          <Cup700Visual layers={layers} activeLayer={step} />
         </div>
 
-        <div className="space-y-4">
-          {LAYER_LABELS.map((label, i) => {
-            const layerCount = (layers[i] || []).length;
-            const layerFull = layerCount >= layerLimit;
-            return (
-              <div key={label} className="rounded-2xl border border-purple-100 p-4">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="font-black text-purple-950">{label}</p>
-                  <span className="shrink-0 text-xs font-bold text-purple-600 bg-purple-50 border border-purple-100 px-2.5 py-1 rounded-full">{layerCount}/{layerLimit}</span>
-                </div>
-                <p className="text-xs text-purple-500 mt-0.5 mb-3">Escolha até 2 ingredientes</p>
-                {layerFull && (
-                  <p className="mb-3 flex items-center gap-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold px-3 py-2">
-                    <Info size={14} className="shrink-0" /> Máximo de 2 ingredientes nesta camada atingido.
-                  </p>
-                )}
-                <IngredientGrid ingredients={availableIngredients} selected={layers[i] || []} onToggle={(ing) => onToggleLayer(i, ing)} showPrices={false} includedLimit={layerLimit} extraLabel="Ingrediente extra" getExtraPrice={() => excess} fullNames />
+        <div className="rounded-2xl border border-purple-100 p-4">
+          {step > 0 && (
+            <button onClick={() => onStepChange(step - 1)} className="mb-3 text-left text-sm font-medium text-purple-400 hover:text-purple-800 active:opacity-70 transition-colors">
+              ← Voltar
+            </button>
+          )}
+          <div className="flex items-center justify-between gap-2">
+            <p className="font-black text-purple-950">{LAYER_LABELS[step]} <span className="text-purple-400">— {layerPositions[step]}</span></p>
+            <span className="shrink-0 text-xs font-bold text-purple-600 bg-purple-50 border border-purple-100 px-2.5 py-1 rounded-full">Camada {step + 1} de 3</span>
+          </div>
+          <p className="text-xs text-purple-500 mt-0.5 mb-3">Escolha até 2 ingredientes.</p>
+
+          <div className="mb-3 flex items-center justify-between gap-3 rounded-xl bg-purple-50 px-3 py-2.5">
+            <span className={`shrink-0 text-sm font-black ${layerFull ? "text-emerald-700" : "text-purple-800"}`}>{layerCount}/{layerLimit} ingredientes</span>
+            <div className="h-2 flex-1 rounded-full bg-purple-100 overflow-hidden">
+              <div className={`h-full transition-all ${layerFull ? "bg-emerald-500" : "bg-purple-700"}`} style={{ width: `${Math.min(100, (layerCount / layerLimit) * 100)}%` }} />
+            </div>
+          </div>
+
+          {layerFull && (
+            <p className="mb-3 flex items-center gap-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold px-3 py-2">
+              <Info size={14} className="shrink-0" /> Máximo de 2 ingredientes nesta camada atingido.
+            </p>
+          )}
+          <IngredientGrid ingredients={availableIngredients} selected={layers[step] || []} onToggle={(ing) => onToggleLayer(step, ing)} showPrices={false} includedLimit={layerLimit} extraLabel="Ingrediente extra" getExtraPrice={() => excess} fullNames />
+        </div>
+
+        <div className="sticky bottom-0 -mx-5 -mb-4 z-10 border-t border-purple-100 bg-white px-5 pt-3 pb-4 shadow-[0_-4px_12px_rgba(0,0,0,0.05)]">
+            {step === 0 && (
+              <div className="flex flex-col gap-1.5">
+                <button onClick={() => onStepChange(1)} className="w-full py-4 rounded-xl bg-purple-800 text-white font-bold text-base hover:bg-purple-900 active:scale-[.98] transition-all">Próxima camada →</button>
+                <button onClick={() => { onClearLayer(0); onStepChange(1); }} className="w-full text-center text-sm font-medium text-purple-400 hover:text-purple-700 active:opacity-70 transition-colors">Pular esta camada</button>
               </div>
-            );
-          })}
-        </div>
-
-        <div className="mt-6 rounded-2xl border border-purple-100 p-4">
-          <p className="text-lg font-bold text-purple-950">Como ficará seu copo</p>
-          <div className="mt-3 space-y-3">
-            {LAYER_LABELS.map((label, i) => {
-              const layerIngs = layers[i] || [];
-              return (
-                <div key={label} className="flex items-center gap-3">
-                  <span className={`w-3 h-9 rounded-full shrink-0 ${layerBars[i]} border border-purple-300`} />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-bold text-purple-950">{label}</p>
-                    <p className={`text-sm break-words whitespace-normal leading-snug ${layerIngs.length ? "text-purple-700" : "text-purple-400"}`}>
-                      {layerIngs.length ? layerIngs.map((x) => x.name).join(" + ") : "Sem ingrediente"}
-                    </p>
-                  </div>
-                </div>
-              );
-            })}
+            )}
+            {step === 1 && (
+              <div className="flex flex-col gap-1.5">
+                <button onClick={() => onStepChange(2)} className="w-full py-4 rounded-xl bg-purple-800 text-white font-bold text-base hover:bg-purple-900 active:scale-[.98] transition-all">Próxima camada →</button>
+                <button onClick={() => { onClearLayer(1); onStepChange(2); }} className="w-full text-center text-sm font-medium text-purple-400 hover:text-purple-700 active:opacity-70 transition-colors">Pular esta camada</button>
+              </div>
+            )}
+            {step === 2 && (
+              <div className="flex flex-col gap-1.5">
+                <button onClick={() => onStepChange(3)} className="w-full py-4 rounded-xl bg-purple-800 text-white font-bold text-base hover:bg-purple-900 active:scale-[.98] transition-all">Finalizar montagem</button>
+                <button onClick={() => { onClearLayer(2); onStepChange(3); }} className="w-full text-center text-sm font-medium text-purple-400 hover:text-purple-700 active:opacity-70 transition-colors">Pular esta camada</button>
+              </div>
+            )}
           </div>
         </div>
-
-        <div className="mt-6 rounded-2xl border border-purple-100 p-4">
-          <p className="text-lg font-bold text-purple-950">🥤 Ingredientes extras</p>
-          <p className="text-sm font-semibold text-purple-800 mt-1">Os ingredientes extras vão em um copinho separado de 100 ml.</p>
-          <p className="text-xs text-purple-500 mt-0.5 mb-3">Cada extra soma +{formatBRL(excess)}.</p>
-          <IngredientGrid ingredients={availableIngredients} selected={extras} onToggle={onToggleExtra} showPrices={false} includedLimit={0} extraLabel="Ingrediente extra" getExtraPrice={() => excess} fullNames />
-        </div>
-
-        <div className="mt-6 rounded-2xl border border-purple-100 p-4">
-          <p className="text-lg font-bold text-purple-950">🍓 Frutas extras</p>
-          <p className="text-sm font-semibold text-purple-800 mt-1">As frutas extras vão em um copinho separado de 100 ml.</p>
-          <p className="text-xs text-purple-500 mt-0.5 mb-3">Cada fruta custa o preço definido no cardápio.</p>
-          <IngredientGrid ingredients={availableFruits} selected={fruits} onToggle={onToggleFruit} showPrices={false} includedLimit={0} extraLabel="Fruta extra" getExtraPrice={(item) => { const fruit = (fruitOpts || []).find((f) => f.id === item.id); return fruit?.price ?? excess; }} fullNames />
-        </div>
-
-        <div className="mt-6">
-          <p className="text-lg font-bold text-purple-950 mb-3">🍫 Cobertura</p>
-          <div className="grid grid-cols-2 gap-2">
-            {TOPPING_OPTIONS.map((option) => (
-              <button key={option.id} onClick={() => setTopping(option)} className={`rounded-xl border px-3 py-3 text-left text-sm font-semibold ${topping?.id === option.id ? "border-purple-700 bg-purple-50 text-purple-900" : "border-purple-100 text-purple-800"}`}>
-                {option.name}
-                {topping?.id === option.id && <Check size={14} className="inline ml-2 text-purple-700" />}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="mt-6 rounded-2xl bg-purple-900 text-white p-4 flex items-center justify-between">
-          <span className="font-bold">Preço total</span>
-          <span className="font-black text-lg">{formatBRL(calculation.total)}</span>
-        </div>
-      </div>
     );
   }
 
@@ -685,6 +754,7 @@ async function playNewOrderSound() {
     const [fruits, setFruits] = useState(initial?.fruits || []);
     const [extras, setExtras] = useState(initial?.extras || []);
     const [topping, setTopping] = useState(initial?.topping || TOPPING_OPTIONS[0]);
+    const [cupStep, setCupStep] = useState(0);
     const fruitOpts = fruitOptions || DEFAULT_FRUIT_OPTIONS;
     const excess = excessPrice ?? DEFAULT_EXCESS_PRICE;
     const is700 = is700ml(category, size);
@@ -699,8 +769,9 @@ async function playNewOrderSound() {
       if (arr.length >= 2) return arr;
       return [...arr, ing];
     }));
+    const clearLayer = (layerIndex) => setLayers((prev) => prev.map((arr, i) => (i === layerIndex ? [] : arr)));
     const calculation = is700
-      ? calculateProductPrice({ category, size, ingredients: [...layers[0], ...layers[1], ...layers[2], ...extras], fruits, topping }, prices, { fruitOptions: fruitOpts, excessPrice: excess })
+      ? calculateProductPrice({ category, size, ingredients: [...layers[0], ...layers[1], ...layers[2]], extras, fruits, topping }, prices, { fruitOptions: fruitOpts, excessPrice: excess, separateExtras: true })
       : calculateProductPrice({ category, size, ingredients: ings, fruits, topping }, prices, { fruitOptions: fruitOpts, excessPrice: excess });
     const label = itemLabel(category, size);
     const buildSelection = () => is700
@@ -727,9 +798,11 @@ async function playNewOrderSound() {
       >
         {is700 ? (
           <Cup700View
-            limit={CUP_700_INGREDIENT_LIMIT}
+            step={cupStep}
+            onStepChange={setCupStep}
             layers={layers}
             onToggleLayer={toggleLayer}
+            onClearLayer={clearLayer}
             availableIngredients={availableIngredients}
             extras={extras}
             onToggleExtra={toggleExtra}
@@ -745,7 +818,7 @@ async function playNewOrderSound() {
         ) : (
           <>
             <p className="text-sm text-purple-500 mb-3">Ingredientes: {ings.length}/{calculation.rule.ingredientLimit}</p>
-            <IngredientGrid ingredients={availableIngredients} selected={ings} onToggle={toggle} showPrices={false} includedLimit={calculation.rule.ingredientLimit} getExtraPrice={() => excess} />
+            <IngredientGrid ingredients={availableIngredients} selected={ings} onToggle={toggle} showPrices={false} includedLimit={calculation.rule.ingredientLimit} getExtraPrice={(ing) => getIngredientExtraPrice(ing, excess)} />
             <p className="text-sm font-semibold text-purple-800 mt-5 mb-2">Frutas</p>
             <p className="text-xs text-purple-500 mb-2">{calculation.rule.fruitLimit ? `Frutas: ${fruits.length}/${calculation.rule.fruitLimit}` : "Frutas: preço por unidade em copinho separado de 100 ml"}</p>
             <IngredientGrid ingredients={availableFruits} selected={fruits} onToggle={toggleFruit} showPrices={false} includedLimit={calculation.rule.fruitLimit} extraLabel="Fruta extra" getExtraPrice={(item) => { const fruit = fruitOpts.find((f) => f.id === item.id); return fruit?.price ?? excess; }} />
