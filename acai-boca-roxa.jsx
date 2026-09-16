@@ -294,6 +294,16 @@ async function disablePushNotifications() {
     { id: "amendoim",   name: "Amendoim",          price: 2,   free: false },
   ];
 
+  const DEFAULT_DELIVERY_SCHEDULE = [
+    [13, 18],
+    [13, 18],
+    [13, 18],
+    null,
+    [13, 18],
+    [13, 18],
+    [13, 18],
+  ];
+
   // Dados reais informados pelo cliente
   const DEFAULT_CONFIG = {
     whatsapp: "5561993691375",
@@ -302,22 +312,60 @@ async function disablePushNotifications() {
     hours: "Todos os dias, das 11h às 20h",
     delivery_enabled: true,
     delivery_manual_closed: false,
+    delivery_schedule: DEFAULT_DELIVERY_SCHEDULE,
     ingredient_order: [],
     fruit_order: [],
   };
 
   function getDeliveryStatus(config, date = new Date()) {
-    const open = config.delivery_enabled === true;
+    const schedule =
+      config.delivery_schedule && Array.isArray(config.delivery_schedule)
+        ? config.delivery_schedule
+        : DEFAULT_DELIVERY_SCHEDULE;
+    const day = date.getDay();
+    const minutesSinceMidnight = date.getHours() * 60 + date.getMinutes();
+    const today = schedule[day];
+
+    if (config.delivery_enabled === false) {
+      return {
+        open: false,
+        day,
+        reason: "manual",
+        closedAllDay: false,
+        start: null,
+        end: null,
+        hoursLabel: "",
+      };
+    }
+
+    if (!today) {
+      return {
+        open: false,
+        day,
+        reason: "fechado_dia",
+        closedAllDay: true,
+        start: null,
+        end: null,
+        hoursLabel: "",
+      };
+    }
+
+    const [start, end] = today;
+    const open = minutesSinceMidnight >= start * 60 && minutesSinceMidnight < end * 60;
 
     return {
       open,
-      reason: open ? "aberto" : "manual",
+      day,
+      reason: open ? "aberto" : "horario",
+      closedAllDay: false,
+      start,
+      end,
+      hoursLabel: `${start}h às ${end}h`,
     };
   }
 
-  function DeliveryStatusIndicator({ deliveryStatus, config }) {
-    const { open } = deliveryStatus;
-    const hours = config.hours || "Todos os dias, das 11h às 20h";
+  function DeliveryStatusIndicator({ deliveryStatus }) {
+    const { open, closedAllDay, hoursLabel } = deliveryStatus;
 
     if (open) {
       return (
@@ -340,11 +388,15 @@ async function disablePushNotifications() {
           <div className="w-2.5 h-2.5 bg-red-500 rounded-full"></div>
           <div className="flex flex-col">
             <span className="text-sm font-bold text-red-900">Delivery fechado</span>
-            <span className="text-xs text-red-700">Pedidos indisponíveis no momento</span>
+            <span className="text-xs text-red-700">{closedAllDay ? "Hoje não estamos aceitando pedidos" : "Pedidos indisponíveis no momento"}</span>
           </div>
         </div>
         <div className="text-xs text-red-700 sm:border-l sm:border-red-300 sm:pl-2">
-          <span className="font-semibold">Horário:</span> {hours}
+          {closedAllDay ? (
+            <span className="font-semibold">O delivery não funciona às quartas-feiras.</span>
+          ) : (
+            <span><span className="font-semibold">Horário de atendimento:</span> {hoursLabel || "13h às 18h"}</span>
+          )}
         </div>
       </div>
     );
@@ -2111,7 +2163,7 @@ function AdminInfoTab({ config, setConfig }) {
           {deliveryStatus.open ? "Aceitando novos pedidos" : "Não aceitando novos pedidos"}
         </p>
         <p className="mt-1 text-xs text-purple-500">
-          {deliveryStatus.reason === "horario" ? "Fechado pelo horário: funcionamento das 13h às 18h." : deliveryStatus.reason === "manual" ? "Fechado manualmente pelo administrador." : "Dentro do horário normal."}
+          {deliveryStatus.reason === "horario" ? `Fechado pelo horário: ${deliveryStatus.hoursLabel || "13h às 18h"}.` : deliveryStatus.reason === "manual" ? "Fechado manualmente pelo administrador." : deliveryStatus.reason === "fechado_dia" ? "Delivery fechado hoje: não funciona às quartas-feiras." : "Dentro do horário normal."}
         </p>
         <button onClick={handleToggleDelivery} className={`mt-3 rounded-xl px-4 py-2 text-sm font-bold text-white ${deliveryStatus.open ? "bg-red-700 hover:bg-red-800" : "bg-emerald-700 hover:bg-emerald-800"}`}>
           {deliveryStatus.open ? "Fechar delivery" : "Abrir delivery"}
@@ -4605,13 +4657,13 @@ useEffect(() => {
     const latestDeliveryStatus = getDeliveryStatus(latestConfig);
 
     if (!latestDeliveryStatus.open) {
-      const hours = latestConfig.hours || "dentro do horário de funcionamento";
-      return {
-        ok: false,
-        message: latestDeliveryStatus.reason === "horario"
-          ? `Delivery fechado pelo horário. Funcionamos ${hours}.`
-          : "Delivery fechado no momento. No momento não estamos aceitando novos pedidos.",
-      };
+      if (latestDeliveryStatus.reason === "fechado_dia") {
+        return { ok: false, message: "Hoje não estamos aceitando pedidos. O delivery não funciona às quartas-feiras." };
+      }
+      if (latestDeliveryStatus.reason === "horario") {
+        return { ok: false, message: `Delivery fechado pelo horário. Horário de atendimento: ${latestDeliveryStatus.hoursLabel || "13h às 18h"}.` };
+      }
+      return { ok: false, message: "Delivery fechado no momento. No momento não estamos aceitando novos pedidos." };
     }
 
     const deliveryRegion = orderType === "retirada" ? "Retirada" : customer.deliveryRegion;
@@ -4696,7 +4748,7 @@ useEffect(() => {
 
       <Header cartCount={cartCount} onCartClick={() => setCartOpen(true)} onNav={scrollTo} />
       <div className="max-w-6xl mx-auto px-4 py-3">
-        <DeliveryStatusIndicator deliveryStatus={deliveryStatus} config={config} />
+        <DeliveryStatusIndicator deliveryStatus={deliveryStatus} />
       </div>
       <Hero onNav={scrollTo} />
       <MenuSection prices={prices} onRequestAdd={(category, size) => setAddModal({ category, size })} />
