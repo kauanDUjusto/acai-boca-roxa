@@ -315,6 +315,41 @@ async function disablePushNotifications() {
     };
   }
 
+  function DeliveryStatusIndicator({ deliveryStatus, config }) {
+    const { open } = deliveryStatus;
+    const hours = config.hours || "Todos os dias, das 11h às 20h";
+
+    if (open) {
+      return (
+        <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-2 shadow-sm">
+          <div className="relative">
+            <div className="w-2.5 h-2.5 bg-emerald-500 rounded-full"></div>
+            <div className="absolute inset-0 w-2.5 h-2.5 bg-emerald-500 rounded-full animate-ping opacity-75"></div>
+          </div>
+          <div className="flex flex-col">
+            <span className="text-sm font-bold text-emerald-900">Delivery aberto</span>
+            <span className="text-xs text-emerald-700">Estamos aceitando pedidos</span>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="flex flex-col sm:flex-row sm:items-center gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-2 shadow-sm">
+        <div className="flex items-center gap-2">
+          <div className="w-2.5 h-2.5 bg-red-500 rounded-full"></div>
+          <div className="flex flex-col">
+            <span className="text-sm font-bold text-red-900">Delivery fechado</span>
+            <span className="text-xs text-red-700">Pedidos indisponíveis no momento</span>
+          </div>
+        </div>
+        <div className="text-xs text-red-700 sm:border-l sm:border-red-300 sm:pl-2">
+          <span className="font-semibold">Horário:</span> {hours}
+        </div>
+      </div>
+    );
+  }
+
   function mapOrderRow(order) {
     return {
       id: order.id,
@@ -1152,7 +1187,7 @@ async function disablePushNotifications() {
     CARRINHO (drawer)
     ============================================================ */
 
-  function CartDrawer({ cart, prices, onClose, onQty, onRemove, onEdit, onCheckout }) {
+  function CartDrawer({ cart, prices, onClose, onQty, onRemove, onEdit, onCheckout, deliveryStatus }) {
     const total = cart.reduce((s, i) => s + unitPrice(i, prices) * i.qty, 0);
     return (
       <div className="fixed inset-0 z-50 flex justify-end">
@@ -1215,7 +1250,19 @@ async function disablePushNotifications() {
             <div className="border-t border-purple-50 px-5 py-4 space-y-3">
               <div className="flex justify-between text-purple-950"><span className="text-purple-500">Subtotal</span><span className="font-bold">{formatBRL(total)}</span></div>
               <div className="flex justify-between text-lg font-bold text-purple-950"><span>Total</span><span>{formatBRL(total)}</span></div>
-              <button onClick={onCheckout} className="w-full py-3.5 rounded-xl bg-purple-800 text-white font-bold hover:bg-purple-900 active:scale-[.98] transition-all">Finalizar pedido</button>
+              {!deliveryStatus.open && (
+                <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-xl p-3">
+                  <span className="text-red-600">🔴</span>
+                  <div className="flex-1">
+                    <p className="text-sm font-bold text-red-900">Delivery fechado</p>
+                    <p className="text-xs text-red-700 mt-1">Seu carrinho está salvo, mas o pedido só poderá ser enviado quando o delivery estiver aberto.</p>
+                    <p className="text-xs text-red-700 mt-1 font-semibold">⚠️ Não faça o pagamento via Pix enquanto o delivery estiver fechado.</p>
+                  </div>
+                </div>
+              )}
+              <button onClick={onCheckout} disabled={!deliveryStatus.open} className={`w-full py-3.5 rounded-xl font-bold flex items-center justify-center transition-all ${deliveryStatus.open ? "bg-purple-800 text-white hover:bg-purple-900 active:scale-[.98]" : "bg-red-100 text-red-400 cursor-not-allowed"}`}>
+                {deliveryStatus.open ? "Finalizar pedido" : "Delivery fechado"}
+              </button>
             </div>
           )}
         </div>
@@ -1425,7 +1472,7 @@ function CheckoutModal({ cart, prices, config, deliveryStatus, onClose, onSent }
     const handleSend = () => {
       if (sending) return; // proteção contra cliques repetidos
       setSubmitError("");
-      if (orderType === "delivery" && !deliveryStatus.open) {
+      if (!deliveryStatus.open) {
         setSubmitError("Delivery fechado no momento. No momento não estamos aceitando novos pedidos.");
         return;
       }
@@ -1464,7 +1511,7 @@ function CheckoutModal({ cart, prices, config, deliveryStatus, onClose, onSent }
         onClose={onClose}
         footer={
           <button disabled={!canSend || sending} onClick={handleSend} className={`w-full py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 transition-all ${canSend && !sending ? "bg-purple-800 text-white hover:bg-purple-900 active:scale-[.98]" : "bg-purple-100 text-purple-400 cursor-not-allowed"}`}>
-            <MessageCircle size={18} /> {sending ? "Enviando..." : "Enviar pedido pelo WhatsApp"}
+            <MessageCircle size={18} /> {sending ? "Enviando..." : deliveryStatus.open ? "Enviar pedido pelo WhatsApp" : "Delivery fechado"}
           </button>
         }
       >
@@ -1474,6 +1521,19 @@ function CheckoutModal({ cart, prices, config, deliveryStatus, onClose, onSent }
             <div className="flex justify-between text-sm"><span>Taxa de entrega</span><span>{orderType === "retirada" ? "Grátis" : (deliveryFee === undefined ? "Selecione a região" : <span className="font-bold">{formatBRL(deliveryFee)}</span>)}</span></div>
             <div className="flex justify-between border-t border-purple-200 pt-1 font-bold"><span>Total final</span><span>{formatBRL(total)}</span></div>
           </div>
+
+          {!deliveryStatus.open && (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-3">
+              <div className="flex items-start gap-2">
+                <span className="text-red-600 text-lg">🔴</span>
+                <div className="flex-1">
+                  <p className="text-sm font-bold text-red-900">Delivery fechado</p>
+                  <p className="text-xs text-red-700 mt-1">Seu carrinho está salvo, mas o pedido só poderá ser enviado quando o delivery estiver aberto.</p>
+                  <p className="text-xs text-red-700 mt-1 font-semibold">⚠️ Não faça o pagamento via Pix enquanto o delivery estiver fechado.</p>
+                </div>
+              </div>
+            </div>
+          )}
 
           <div>
             <label className="text-sm font-medium text-purple-800 mb-2 block">Tipo de pedido</label>
@@ -1542,32 +1602,33 @@ function CheckoutModal({ cart, prices, config, deliveryStatus, onClose, onSent }
   </div>
 
   {form.payment === "Pix" && (
-    <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-center">
-      <p className="font-bold text-emerald-900">
-        Pagamento via PIX
-      </p>
+    deliveryStatus.open ? (
+      <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-center">
+        <p className="font-bold text-emerald-900">
+          Pagamento via PIX
+        </p>
 
-      <p className="mt-1 text-xs text-emerald-800">
-        Aponte a câmera do celular para o QR Code
-      </p>
+        <p className="mt-1 text-xs text-emerald-800">
+          Aponte a câmera do celular para o QR Code
+        </p>
 
-      <div className="mt-3 flex justify-center">
-        <div className="rounded-xl bg-white p-3 shadow-sm">
-          <QRCodeSVG
-            value={generatePixPayload(total)}
-            size={200}
-            level="M"
-          />
+        <div className="mt-3 flex justify-center">
+          <div className="rounded-xl bg-white p-3 shadow-sm">
+            <QRCodeSVG
+              value={generatePixPayload(total)}
+              size={200}
+              level="M"
+            />
+          </div>
         </div>
-      </div>
 
-      <p className="mt-3 text-xs font-bold text-emerald-900">
-        Valor: {formatBRL(total)}
-      </p>
+        <p className="mt-3 text-xs font-bold text-emerald-900">
+          Valor: {formatBRL(total)}
+        </p>
 
-      <p className="mt-2 text-xs text-emerald-800">
-        Chave PIX: +5561991722946
-      </p>
+        <p className="mt-2 text-xs text-emerald-800">
+          Chave PIX: +5561991722946
+        </p>
 
 <button
   type="button"
@@ -1586,18 +1647,18 @@ function CheckoutModal({ cart, prices, config, deliveryStatus, onClose, onSent }
   📋 Copiar PIX copia e cola
 </button>
 
-      <p className="mt-2 text-[11px] text-emerald-700">
-        Após realizar o pagamento, envie o pedido pelo WhatsApp.
-      </p>
-    </div>
+        <p className="mt-2 text-[11px] text-emerald-700">
+          Após realizar o pagamento, envie o pedido pelo WhatsApp.
+        </p>
+      </div>
+    ) : (
+      <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-center">
+        <p className="font-bold text-red-900">PIX indisponível no momento</p>
+        <p className="mt-1 text-xs text-red-700">Quando o delivery abrir, o PIX será liberado aqui para concluir seu pedido.</p>
+      </div>
+    )
   )}
 </div>
-
-{!deliveryStatus.open && (
-  <p className="text-xs text-pink-600">
-    Delivery fechado no momento. No momento não estamos aceitando novos pedidos.
-  </p>
-)}
 
 {deliveryStatus.open && !canSend && (
   <p className="text-xs text-pink-600">
@@ -4543,11 +4604,12 @@ useEffect(() => {
     const latestConfig = { ...DEFAULT_CONFIG, ...latestConfigRow.data };
     const latestDeliveryStatus = getDeliveryStatus(latestConfig);
 
-    if (orderType === "delivery" && !latestDeliveryStatus.open) {
+    if (!latestDeliveryStatus.open) {
+      const hours = latestConfig.hours || "dentro do horário de funcionamento";
       return {
         ok: false,
         message: latestDeliveryStatus.reason === "horario"
-          ? "Delivery fechado pelo horário. Funcionamos das 13h às 18h."
+          ? `Delivery fechado pelo horário. Funcionamos ${hours}.`
           : "Delivery fechado no momento. No momento não estamos aceitando novos pedidos.",
       };
     }
@@ -4633,6 +4695,9 @@ useEffect(() => {
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400..900&family=Manrope:wght@400;500;600;700;800&display=swap');`}</style>
 
       <Header cartCount={cartCount} onCartClick={() => setCartOpen(true)} onNav={scrollTo} />
+      <div className="max-w-6xl mx-auto px-4 py-3">
+        <DeliveryStatusIndicator deliveryStatus={deliveryStatus} config={config} />
+      </div>
       <Hero onNav={scrollTo} />
       <MenuSection prices={prices} onRequestAdd={(category, size) => setAddModal({ category, size })} />
       <OrderTrackingSection onTrackOrder={handleTrackOrder} />
@@ -4659,7 +4724,7 @@ useEffect(() => {
       )}
 
       {cartOpen && (
-        <CartDrawer cart={cart} prices={prices} onClose={() => setCartOpen(false)} onQty={changeQty} onRemove={removeItem} onEdit={editItem} onCheckout={() => { setCartOpen(false); setCheckoutOpen(true); }} />
+        <CartDrawer cart={cart} prices={prices} deliveryStatus={deliveryStatus} onClose={() => setCartOpen(false)} onQty={changeQty} onRemove={removeItem} onEdit={editItem} onCheckout={() => { setCartOpen(false); setCheckoutOpen(true); }} />
       )}
 
       {checkoutOpen && (
