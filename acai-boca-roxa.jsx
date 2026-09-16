@@ -72,6 +72,102 @@ async function playNewOrderSound() {
     console.error("Erro ao reproduzir som:", error);
   }
 }
+
+/* ============================================================
+   NOTIFICAÇÕES PUSH (Web Push via Service Worker)
+   Complementa o som atual: funciona com a tela bloqueada/apagada
+   e com o painel em segundo plano. A chave pública VAPID é segura
+   para o frontend (a chave privada fica só na Edge Function).
+   ============================================================ */
+
+const PUSH_VAPID_PUBLIC_KEY = "BBDI2vlwDUu7-j8BfLDqBfimNHpVc7xMkVp-_gB8zqi4pX-4PogMWrcRjBFMygdt43ufvv07iPQZ0yxG_YanHJY";
+const PUSH_SW_PATH = "/sw.js";
+
+function isPushSupported() {
+  return (
+    typeof window !== "undefined" &&
+    "serviceWorker" in navigator &&
+    "PushManager" in window &&
+    "Notification" in window
+  );
+}
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
+
+async function getPushRegistration() {
+  if (!("serviceWorker" in navigator)) return null;
+  const existing = await navigator.serviceWorker.getRegistration("/");
+  if (existing) return existing;
+  return navigator.serviceWorker.register(PUSH_SW_PATH, { scope: "/" });
+}
+
+async function getExistingPushSubscription() {
+  try {
+    const registration = await navigator.serviceWorker.getRegistration("/");
+    if (!registration) return null;
+    return registration.pushManager.getSubscription();
+  } catch (error) {
+    console.error("Erro ao verificar inscrição push:", error);
+    return null;
+  }
+}
+
+async function enablePushNotifications() {
+  if (!isPushSupported()) throw new Error("unsupported");
+
+  const permission = await Notification.requestPermission();
+  if (permission !== "granted") throw new Error("denied");
+
+  const registration = await getPushRegistration();
+  if (!registration) throw new Error("no-service-worker");
+  await navigator.serviceWorker.ready;
+
+  let subscription = await registration.pushManager.getSubscription();
+  if (!subscription) {
+    subscription = await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(PUSH_VAPID_PUBLIC_KEY),
+    });
+  }
+
+  const json = subscription.toJSON();
+  const { error } = await supabase.from("push_subscriptions").upsert(
+    {
+      endpoint: json.endpoint,
+      p256dh: json.keys?.p256dh || "",
+      auth: json.keys?.auth || "",
+      user_agent: navigator.userAgent,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "endpoint" }
+  );
+
+  if (error) throw error;
+  return subscription;
+}
+
+async function disablePushNotifications() {
+  try {
+    const registration = await navigator.serviceWorker.getRegistration("/");
+    const subscription = registration ? await registration.pushManager.getSubscription() : null;
+    if (!subscription) return;
+    const { endpoint } = subscription;
+    await subscription.unsubscribe();
+    await supabase.from("push_subscriptions").delete().eq("endpoint", endpoint);
+  } catch (error) {
+    console.error("Erro ao desativar notificações push:", error);
+  }
+}
+
   /* ============================================================
     ASSETS DA MARCA (logo e arte de divulgação reais, enviados pelo cliente)
     ============================================================ */
@@ -4074,7 +4170,7 @@ function AdminOrdersTab({ orders, setOrders, showFinance = false }) {
   );
 }
 
-function AdminPanel({ config, setConfig, prices, setPrices, ingredients, setIngredients, orders, setOrders, soundEnabled, onToggleSound, newOrderAlert, fruitOptions, setFruitOptions, excessPrice, setExcessPrice }) {
+function AdminPanel({ config, setConfig, prices, setPrices, ingredients, setIngredients, orders, setOrders, soundEnabled, onToggleSound, newOrderAlert, fruitOptions, setFruitOptions, excessPrice, setExcessPrice, pushSupported, pushSubscribed, pushBusy, pushInfo, onTogglePush }) {
   const [tab, setTab] = useState("pedidos");
   const [counterOrderOpen, setCounterOrderOpen] = useState(false);
   const tabs = [
@@ -4105,9 +4201,10 @@ function AdminPanel({ config, setConfig, prices, setPrices, ingredients, setIngr
   <LogOut size={15} /> Sair
 </button>
         </div>
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 pb-2 flex items-center justify-between gap-3">
-          {newOrderAlert ? <p className="text-sm font-bold text-emerald-700">🔔 Novo pedido recebido!</p> : <span />}
-          <div className="flex items-center gap-3">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 pb-2 space-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            {newOrderAlert ? <p className="text-sm font-bold text-emerald-700">🔔 Novo pedido recebido!</p> : <span />}
+            <div className="flex flex-wrap items-center gap-3">
   <button
     onClick={() => setCounterOrderOpen(true)}
     className="rounded-xl bg-purple-800 px-4 py-2 text-sm font-bold text-white hover:bg-purple-900"
@@ -4126,7 +4223,26 @@ function AdminPanel({ config, setConfig, prices, setPrices, ingredients, setIngr
   >
     {soundEnabled ? "🔊 Som ativado" : "🔇 Ativar som"}
   </button>
+
+  {pushSupported ? (
+    <button
+      onClick={onTogglePush}
+      disabled={pushBusy}
+      className={`text-sm font-semibold px-3 py-1.5 rounded-lg transition-colors disabled:opacity-60 ${
+        pushSubscribed
+          ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-200"
+          : "bg-purple-100 text-purple-700 hover:bg-purple-200"
+      }`}
+      title={pushSubscribed ? "Desativar notificações push neste dispositivo" : "Ativar notificações push neste dispositivo"}
+    >
+      {pushBusy ? "⏳ Ativando..." : pushSubscribed ? "🔔 Push ativado" : "🔕 Ativar push"}
+    </button>
+  ) : (
+    <span className="text-xs font-semibold text-purple-400">Push indisponível neste navegador</span>
+  )}
 </div>
+          </div>
+          {pushInfo && <p className="text-xs font-semibold text-purple-600">{pushInfo}</p>}
         </div>
         <div className="max-w-5xl mx-auto px-4 sm:px-6 flex gap-1 overflow-x-auto pb-2">
           {tabs.map(([id, label, Icon]) => (
@@ -4189,6 +4305,10 @@ export default function App() {
   const [trackingOrderId, setTrackingOrderId] = useState(null);
   const [soundEnabled, setSoundEnabled] = useState(() => localStorage.getItem("acai_boca_roxa_admin_sound_enabled") !== "false");
   const [newOrderAlert, setNewOrderAlert] = useState(false);
+  const [pushSupported, setPushSupported] = useState(false);
+  const [pushSubscribed, setPushSubscribed] = useState(false);
+  const [pushBusy, setPushBusy] = useState(false);
+  const [pushInfo, setPushInfo] = useState("");
   const knownOrderIds = useRef(new Set());
   const soundEnabledRef = useRef(soundEnabled);
   const [currentTime, setCurrentTime] = useState(() => new Date());
@@ -4318,6 +4438,55 @@ useEffect(() => {
     supabase.removeChannel(channel);
   };
 }, [view, adminAuthed, ordersLoaded]);
+
+  useEffect(() => {
+    let active = true;
+    const verify = async () => {
+      const supported = isPushSupported();
+      if (!active) return;
+      setPushSupported(supported);
+      if (!supported) return;
+      const subscription = await getExistingPushSubscription();
+      if (active) setPushSubscribed(!!subscription);
+      if (active && "Notification" in window && Notification.permission === "denied") {
+        setPushInfo("Notificações bloqueadas neste navegador. Libere nas configurações do site/celular.");
+      }
+    };
+    verify();
+    return () => {
+      active = false;
+    };
+  }, [view, adminAuthed]);
+
+  const togglePushNotifications = async () => {
+    if (pushBusy) return;
+    setPushBusy(true);
+    setPushInfo("");
+    try {
+      if (pushSubscribed) {
+        await disablePushNotifications();
+        setPushSubscribed(false);
+        setPushInfo("Notificações push desativadas neste dispositivo.");
+      } else {
+        await enablePushNotifications();
+        setPushSubscribed(true);
+        setPushInfo("Notificações push ativadas neste dispositivo.");
+      }
+    } catch (error) {
+      if (error?.message === "denied") {
+        setPushInfo("Permissão de notificação negada. Ative nas configurações do navegador/celular.");
+      } else if (error?.message === "missing-key") {
+        setPushInfo("Notificações push ainda não foram configuradas no servidor.");
+      } else if (error?.message === "unsupported") {
+        setPushInfo("Este navegador não suporta notificações push.");
+      } else {
+        setPushInfo("Não foi possível ativar as notificações push. Tente novamente.");
+      }
+      console.error("Erro nas notificações push:", error);
+    } finally {
+      setPushBusy(false);
+    }
+  };
 
   const toggleAdminSound = async () => {
     const nextEnabled = !soundEnabled;
@@ -4454,7 +4623,7 @@ useEffect(() => {
     return (
       <div style={{ fontFamily: "'Manrope', sans-serif" }}>
         <style>{`@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400..900&family=Manrope:wght@400;500;600;700;800&display=swap');`}</style>
-        <AdminPanel config={config} setConfig={setConfig} prices={prices} setPrices={setPrices} ingredients={ingredients} setIngredients={setIngredients} orders={orders} setOrders={setOrders} soundEnabled={soundEnabled} onToggleSound={toggleAdminSound} newOrderAlert={newOrderAlert} fruitOptions={fruitOptions} setFruitOptions={setFruitOptions} excessPrice={excessPrice} setExcessPrice={setExcessPrice} />
+        <AdminPanel config={config} setConfig={setConfig} prices={prices} setPrices={setPrices} ingredients={ingredients} setIngredients={setIngredients} orders={orders} setOrders={setOrders} soundEnabled={soundEnabled} onToggleSound={toggleAdminSound} newOrderAlert={newOrderAlert} fruitOptions={fruitOptions} setFruitOptions={setFruitOptions} excessPrice={excessPrice} setExcessPrice={setExcessPrice} pushSupported={pushSupported} pushSubscribed={pushSubscribed} pushBusy={pushBusy} pushInfo={pushInfo} onTogglePush={togglePushNotifications} />
       </div>
     );
   }
