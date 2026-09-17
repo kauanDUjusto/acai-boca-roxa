@@ -96,6 +96,25 @@
     font-size: 14pt !important;
   }
 
+  .print-order .font-black.text-lg {
+    font-size: 12.5pt !important;
+  }
+
+  .print-order .uppercase {
+    text-transform: uppercase !important;
+  }
+
+  .print-order .border-purple-900,
+  .print-order .border-purple-300,
+  .print-order .border-purple-200 {
+    border-color: #000 !important;
+  }
+
+  .print-order .break-inside-avoid {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
   .print-order > div {
     margin-top: 2.5mm !important;
     padding-top: 2.5mm !important;

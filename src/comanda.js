@@ -163,8 +163,7 @@ function simpleAdicionaisHtml(item) {
 
   let html = "";
   if (bullets.length) {
-    html += `<div class="sec-label">ADICIONAIS:</div>`;
-    html += bulletList(bullets);
+    html += `<div class="adicionais"><div class="adicionais-label">ADICIONAIS</div>${bulletList(bullets)}</div>`;
   }
   if (item.extras && item.extras.length) {
     html += `<div class="sec-label">COPO 100 ML — INGREDIENTES EXTRAS:</div>`;
@@ -186,13 +185,18 @@ function priceNotesHtml(item) {
 
 /* Bloco de um item da comanda */
 export function buildItemHtml(item) {
+  const qty = Number(item.qty) || 1;
   const totalPrice = Number(
-    (item.finalPrice ?? item.calculation?.total ?? 0) * (Number(item.qty) || 1) || 0
+    (item.finalPrice ?? item.calculation?.total ?? 0) * qty || 0
   );
+  const size = itemSizeText(item.category, item.size);
   return `
         <div class="item">
-          <div class="item-title">${escapeHtml(itemTitle(item))}</div>
-          ${itemSizeText(item.category, item.size) ? `<div class="item-size">${escapeHtml(itemSizeText(item.category, item.size))}</div>` : ""}
+          <div class="item-head">
+            <span class="qty">${qty}x</span>
+            <span class="product-name">${escapeHtml(categoryLabel(item.category))}</span>
+          </div>
+          ${size ? `<div class="item-size">${escapeHtml(size)}</div>` : ""}
           ${coberturaHtml(item)}
           ${item.layers?.length === 3 ? layersHtml(item) : simpleAdicionaisHtml(item)}
           ${priceNotesHtml(item)}
@@ -250,8 +254,8 @@ function observationHtml(order) {
   if (!note) return "";
   return `
         <div class="obs">
-          <div class="obs-label">📝 OBSERVAÇÃO DO PEDIDO:</div>
-          <div>${escapeHtml(note)}</div>
+          <div class="obs-label">📝 OBSERVAÇÃO DO PEDIDO</div>
+          <div class="obs-text">${escapeHtml(note)}</div>
         </div>`;
 }
 
@@ -358,60 +362,115 @@ export function buildComandaHtml(order) {
           .item {
             border: 1px solid #000;
             padding: 2mm 2mm;
-            margin-top: 2.5mm;
+            margin-top: 3mm;
+            page-break-inside: avoid;
+            break-inside: avoid;
           }
 
-          .item-title {
+          .item-head {
+            display: flex;
+            align-items: center;
+            gap: 2mm;
+          }
+
+          .qty {
+            background: #000;
+            color: #fff;
             font-family: Arial, "Helvetica Neue", sans-serif;
             font-size: 12pt;
             font-weight: bold;
+            line-height: 1.15;
+            padding: 0.8mm 2mm;
+          }
+
+          .product-name {
+            font-family: Arial, "Helvetica Neue", sans-serif;
+            font-size: 13pt;
+            font-weight: bold;
             text-transform: uppercase;
+            letter-spacing: 0.5px;
           }
 
           .item-size {
-            font-size: 10.5pt;
+            font-size: 11pt;
             font-weight: bold;
-            margin-top: 0.5mm;
+            margin-top: 1mm;
+            text-transform: uppercase;
           }
 
           .cobertura {
-            border: 1px solid #000;
+            background: #000;
+            color: #fff;
             font-family: Arial, "Helvetica Neue", sans-serif;
-            font-size: 10.5pt;
+            font-size: 11pt;
             font-weight: bold;
             text-transform: uppercase;
             text-align: center;
-            padding: 1mm;
-            margin: 1.2mm 0 1mm;
+            letter-spacing: 0.5px;
+            padding: 1.3mm;
+            margin: 1.8mm 0 1.2mm;
           }
 
           .no-cobertura {
             background: #000;
             color: #fff;
             font-family: Arial, "Helvetica Neue", sans-serif;
-            font-size: 12pt;
+            font-size: 13pt;
             font-weight: bold;
             text-transform: uppercase;
             text-align: center;
-            letter-spacing: 0.5px;
-            padding: 1.4mm;
-            margin: 1.2mm 0 1mm;
+            letter-spacing: 1px;
+            padding: 1.8mm;
+            margin: 1.8mm 0 1.2mm;
+          }
+
+          .adicionais {
+            border: 1px solid #000;
+            margin-top: 1.8mm;
+            padding: 1.2mm 1.5mm 1.4mm;
+            page-break-inside: avoid;
+            break-inside: avoid;
+          }
+
+          .adicionais-label {
+            font-family: Arial, "Helvetica Neue", sans-serif;
+            font-size: 10.5pt;
+            font-weight: bold;
+            text-transform: uppercase;
+            text-align: center;
+            letter-spacing: 1px;
+            border-bottom: 1px solid #000;
+            padding-bottom: 0.5mm;
+            margin-bottom: 0.8mm;
+          }
+
+          .adicionais .bullet {
+            font-weight: bold;
+            font-size: 10pt;
           }
 
           .sec-label {
+            font-family: Arial, "Helvetica Neue", sans-serif;
             font-weight: bold;
-            font-size: 9.5pt;
-            margin-top: 1.2mm;
+            font-size: 10pt;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 1px solid #000;
+            padding-bottom: 0.3mm;
+            margin-top: 1.8mm;
           }
 
           .layer-label {
             font-weight: bold;
-            margin-top: 0.8mm;
+            margin-top: 1mm;
           }
 
           .bullet {
+            font-weight: bold;
+            text-transform: uppercase;
             padding-left: 4mm;
             text-indent: -4mm;
+            margin-top: 0.3mm;
           }
 
           .price-note {
@@ -427,19 +486,34 @@ export function buildComandaHtml(order) {
 
           .obs {
             border: 2px solid #000;
-            padding: 1.5mm;
-            margin-top: 2.5mm;
-            font-size: 9.5pt;
+            margin-top: 3mm;
+            font-size: 10pt;
+            page-break-inside: avoid;
+            break-inside: avoid;
           }
 
           .obs .obs-label {
+            background: #000;
+            color: #fff;
+            text-align: center;
             font-family: Arial, "Helvetica Neue", sans-serif;
             font-size: 10.5pt;
             font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            padding: 1mm;
+          }
+
+          .obs .obs-text {
+            font-size: 10.5pt;
+            font-weight: bold;
+            padding: 1.5mm 2mm;
           }
 
           .totals {
             font-size: 9.5pt;
+            page-break-inside: avoid;
+            break-inside: avoid;
           }
 
           .row {
@@ -449,9 +523,11 @@ export function buildComandaHtml(order) {
           }
 
           .total {
-            font-size: 13pt;
+            font-size: 12.5pt;
             font-weight: bold;
-            margin-top: 1mm;
+            margin-top: 1.5mm;
+            border-top: 2px solid #000;
+            padding-top: 1mm;
           }
 
           .footer-note {

@@ -3988,34 +3988,40 @@ function AdminOrdersTab({ orders, setOrders, showFinance = false }) {
             <div className="border-t border-purple-200 pt-3">
               <h2 className="font-bold text-center">Produtos</h2>
               {selectedOrder.items?.map((item, index) => (
-                <div key={index} className="border border-purple-300 rounded-lg p-2 mt-2 text-sm">
-                  <p className="font-black">{item.qty}x {CATEGORY_LABEL[item.category] || item.category}</p>
-                  <p className="font-bold">{item.category === "barca" ? (item.size === "grande" ? "Grande" : "Pequena") : `${item.size} ml`}</p>
+                <div key={index} className="border border-purple-900 rounded-lg p-2 mt-3 text-sm break-inside-avoid">
+                  <div className="flex items-center gap-2">
+                    <span className="bg-purple-950 text-white font-black px-2 py-0.5 rounded">{item.qty}x</span>
+                    <span className="font-black text-lg uppercase">{CATEGORY_LABEL[item.category] || item.category}</span>
+                  </div>
+                  <p className="font-bold mt-1 uppercase">{item.category === "barca" ? (item.size === "grande" ? "Grande" : "Pequena") : `${item.size} ml`}</p>
                   {coberturaName(item) ? (
-                    <p className="text-center font-black uppercase border border-purple-900 py-0.5 mt-1">Cobertura: {coberturaName(item)}</p>
+                    <p className="text-center font-black uppercase bg-purple-950 text-white py-1 mt-1">🍫 Cobertura: {coberturaName(item)}</p>
                   ) : (
                     <p className="text-center font-black uppercase bg-purple-950 text-white py-1 mt-1">🚫 Sem cobertura</p>
                   )}
                   {item.layers?.length === 3 ? (
-                    <div className="mt-1 space-y-0.5">
-                      {[2, 1, 0].map((i) => (
-                        <p key={LAYER_LABELS[i]}><strong>{LAYER_LABELS[i]}:</strong> {item.layers[i]?.ingredients?.length ? item.layers[i].ingredients.map((ing) => ing.name).join(", ") : "—"}</p>
-                      ))}
-                      {item.extras?.length > 0 && <p><strong>Copo 100 ml — ingredientes extras:</strong> {item.extras.map((extra) => extra.name).join(", ")}</p>}
-                      {item.fruits?.length > 0 && <p><strong>Copo 100 ml — frutas:</strong> {getFruitDisplayList(item).map((label) => `${label} (copinho)`).join(", ")}</p>}
+                    <div className="mt-1">
+                      <p className="font-black text-center border border-purple-900 py-0.5 mt-1">MONTAGEM EM CAMADAS</p>
+                      <div className="mt-1 space-y-0.5">
+                        {[2, 1, 0].map((i) => (
+                          <p key={LAYER_LABELS[i]}><strong>{LAYER_LABELS[i]}:</strong> {item.layers[i]?.ingredients?.length ? item.layers[i].ingredients.map((ing) => ing.name).join(", ") : "—"}</p>
+                        ))}
+                        {item.extras?.length > 0 && <p><strong>Copo 100 ml — ingredientes extras:</strong> {item.extras.map((extra) => extra.name).join(", ")}</p>}
+                        {item.fruits?.length > 0 && <p><strong>Copo 100 ml — frutas:</strong> {getFruitDisplayList(item).map((label) => `${label} (copinho)`).join(", ")}</p>}
+                      </div>
                     </div>
                   ) : (
-                    <div className="mt-1 space-y-0.5">
+                    <div className="mt-1">
                       {adicionaisLabels(item).length > 0 && (
-                        <>
-                          <p className="font-bold">Adicionais:</p>
-                          {adicionaisLabels(item).map((label, idx) => <p key={idx}>• {label}</p>)}
-                        </>
+                        <div className="border border-purple-900 rounded-md px-2 py-1 mt-1">
+                          <p className="text-center font-black uppercase border-b border-purple-900 pb-0.5 mb-1">Adicionais</p>
+                          {adicionaisLabels(item).map((label, idx) => <p key={idx} className="font-bold uppercase">• {label}</p>)}
+                        </div>
                       )}
                       {item.extras?.length > 0 && (
                         <>
-                          <p className="font-bold">Copo 100 ml — ingredientes extras:</p>
-                          {item.extras.map((extra, idx) => <p key={idx}>• {extra.name}</p>)}
+                          <p className="font-black border-b border-purple-900 mt-1">Copo 100 ml — ingredientes extras:</p>
+                          {item.extras.map((extra, idx) => <p key={idx} className="font-bold uppercase">• {extra.name}</p>)}
                         </>
                       )}
                     </div>
@@ -4027,9 +4033,9 @@ function AdminOrdersTab({ orders, setOrders, showFinance = false }) {
               ))}
             </div>
             {selectedOrder.customer?.note && (
-              <div className="border-2 border-purple-900 rounded-lg p-2 text-sm">
-                <p className="font-black">📝 Observação do pedido:</p>
-                <p>{selectedOrder.customer.note}</p>
+              <div className="border-2 border-purple-900 rounded-lg text-sm break-inside-avoid">
+                <p className="bg-purple-950 text-white text-center font-black uppercase py-1">📝 Observação do pedido</p>
+                <p className="font-bold px-2 py-1.5">{selectedOrder.customer.note}</p>
               </div>
             )}
             <div className="space-y-1 border-t-2 border-purple-900 pt-3 text-sm">
