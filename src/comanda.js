@@ -232,6 +232,23 @@ export function orderTypeLabel(order) {
   return "Delivery";
 }
 
+/* Classificação de fluxo dos pedidos — usada pelo painel para separar
+   o fluxo de balcão (comer no local / para viagem) do fluxo de delivery.
+   Reutiliza apenas campos já existentes no pedido. */
+export function isBalcaoOrder(order) {
+  const source = String(order?.orderSource || "").toLowerCase();
+  const region = String(order?.deliveryRegion || "").toLowerCase();
+  const address = String(order?.customer?.address || "").toLowerCase();
+  if (source === "balcão" || source === "balcao" || region === "balcão" || region === "balcao") return true;
+  return address === "comer no local" || address === "para levar" || address === "para viagem";
+}
+
+export function isLocalTakeawayOrder(order) {
+  if (!isBalcaoOrder(order)) return false;
+  const address = String(order?.customer?.address || "").toLowerCase();
+  return address === "comer no local" || address === "para levar" || address === "para viagem";
+}
+
 function metaHtml(order) {
   const customer = order.customer || {};
   const rows = [];

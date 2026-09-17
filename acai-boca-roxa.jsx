@@ -10,7 +10,7 @@ import { supabase } from "./src/supabase.js";
 
 import { QRCodeSVG } from "qrcode.react";
 
-import { buildComandaHtml, adicionaisLabels, coberturaName } from "./src/comanda.js";
+import { buildComandaHtml, adicionaisLabels, coberturaName, isBalcaoOrder, isLocalTakeawayOrder } from "./src/comanda.js";
 
 let adminAudioContext;
 let audioContextInitialized = false;
@@ -2386,17 +2386,25 @@ function AdminExtrasTab({ config, setConfig, fruitOptions, setFruitOptions, exce
 function printOrder(order) {
   if (!order) return;
 
+  const printWindow = openPrintWindow();
+
+  if (printWindow) printToWindow(printWindow, order);
+}
+
+function openPrintWindow() {
   const printWindow = window.open("", "_blank", "width=400,height=800");
 
   if (!printWindow) {
     alert("O navegador bloqueou a janela de impressão. Permita pop-ups para este site.");
-    return;
+    return null;
   }
 
+  return printWindow;
+}
+
+function printToWindow(printWindow, order) {
   printWindow.document.open();
-
   printWindow.document.write(buildComandaHtml(order));
-
   printWindow.document.close();
 }
 
@@ -3085,6 +3093,7 @@ function AdminOrdersTab({ orders, setOrders, showFinance = false }) {
   const [cashHistory, setCashHistory] = useState([]);
   const counterSaveVersion = useRef(0);
   const lastSavedCounter = useRef(null);
+  const acceptingOrderRef = useRef(new Set());
   const sorted = [...orders].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
 
   // Filtro de pedidos por data
@@ -3303,9 +3312,24 @@ function AdminOrdersTab({ orders, setOrders, showFinance = false }) {
   const statusActions = (order) => {
     if (!order) return null;
     if (order.status === "cancelado") return null;
+
+    const balcaoSimples =
+      isBalcaoOrder(order) && isLocalTakeawayOrder(order);
+
     if (order.status === "novo") {
-      return <button onClick={() => setOrderStatus(order.id, "preparando")} className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg border border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-colors"><Check size={14} /> Aceitar pedido</button>;
+      return <button onClick={() => handleAcceptOrder(order)} className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg border border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-colors"><Check size={14} /> Aceitar pedido</button>;
     }
+
+    if (balcaoSimples) {
+      if (order.status === "preparando") {
+        return <button onClick={() => setOrderStatus(order.id, "concluido")} className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg border border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-colors"><Check size={14} /> Concluir pedido</button>;
+      }
+      if (order.status === "concluido") {
+        return <span className="text-xs font-semibold text-emerald-600 px-2 py-1">✓ Pedido concluído</span>;
+      }
+      return null;
+    }
+
     if (order.status === "preparando") {
       return <button onClick={() => setOrderStatus(order.id, "aguardando_motoboy")} className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg border border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100 transition-colors"><Check size={14} /> Pedido pronto</button>;
     }
@@ -3452,12 +3476,12 @@ function AdminOrdersTab({ orders, setOrders, showFinance = false }) {
 
     if (!order) {
       console.error("Pedido não encontrado:", id);
-      return;
+      return false;
     }
 
     if (order.status === "cancelado") {
       console.warn("Pedido cancelado não pode ter o status alterado.");
-      return;
+      return false;
     }
 
     console.log(`Alterando status do pedido ${id} de "${order.status}" para "${newStatus}"`);
@@ -3478,7 +3502,7 @@ function AdminOrdersTab({ orders, setOrders, showFinance = false }) {
     if (error) {
       console.error("ERRO AO ATUALIZAR PEDIDO NO SUPABASE:", error);
       alert(`Erro ao atualizar pedido: ${error.message || "Erro desconhecido"}`);
-      return;
+      return false;
     }
 
     console.log("Status atualizado com sucesso no Supabase");
@@ -3498,6 +3522,24 @@ function AdminOrdersTab({ orders, setOrders, showFinance = false }) {
     );
 
     console.log("Estado local atualizado");
+
+    return true;
+  };
+
+  const handleAcceptOrder = async (order) => {
+    if (!order) return;
+    const id = order.id;
+    if (acceptingOrderRef.current.has(id)) return;
+    acceptingOrderRef.current.add(id);
+    try {
+      const printWindow = openPrintWindow();
+      const ok = await setOrderStatus(id, "preparando");
+      if (!printWindow) return;
+      if (ok) printToWindow(printWindow, order);
+      else printWindow.close();
+    } finally {
+      acceptingOrderRef.current.delete(id);
+    }
   };
 
   const toggleStatus = async (id) => {
