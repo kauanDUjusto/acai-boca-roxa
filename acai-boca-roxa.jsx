@@ -10,7 +10,7 @@ import { supabase } from "./src/supabase.js";
 
 import { QRCodeSVG } from "qrcode.react";
 
-import { buildComandaHtml, adicionaisLabels } from "./src/comanda.js";
+import { buildComandaHtml, adicionaisLabels, coberturaName } from "./src/comanda.js";
 
 let adminAudioContext;
 let audioContextInitialized = false;
@@ -874,6 +874,10 @@ async function disablePushNotifications() {
           <div className="mt-6">
             <p className="text-lg font-bold text-purple-950 mb-3">🍫 Cobertura</p>
             <div className="grid grid-cols-2 gap-2">
+              <button onClick={() => setTopping(null)} className={`rounded-xl border px-3 py-3 text-left text-sm font-semibold ${!topping ? "border-purple-700 bg-purple-50 text-purple-900" : "border-purple-100 text-purple-800"}`}>
+                🚫 Sem cobertura
+                {!topping && <Check size={14} className="inline ml-2 text-purple-700" />}
+              </button>
               {TOPPING_OPTIONS.map((option) => (
                 <button key={option.id} onClick={() => setTopping(option)} className={`rounded-xl border px-3 py-3 text-left text-sm font-semibold ${topping?.id === option.id ? "border-purple-700 bg-purple-50 text-purple-900" : "border-purple-100 text-purple-800"}`}>
                   {option.name}
@@ -975,7 +979,7 @@ async function disablePushNotifications() {
     );
     const [fruits, setFruits] = useState(initial?.fruits || []);
     const [extras, setExtras] = useState(initial?.extras || []);
-    const [topping, setTopping] = useState(initial?.topping || TOPPING_OPTIONS[0]);
+    const [topping, setTopping] = useState(initial?.topping || null);
     const [cupStep, setCupStep] = useState(0);
     const fruitOpts = fruitOptions || DEFAULT_FRUIT_OPTIONS;
     const excess = excessPrice ?? DEFAULT_EXCESS_PRICE;
@@ -1044,8 +1048,9 @@ async function disablePushNotifications() {
             <p className="text-sm font-bold text-purple-800 mt-5 mb-2">Frutas</p>
             <p className="text-xs font-semibold text-purple-500 mb-2">{calculation.rule.fruitLimit ? `Frutas: ${fruits.length}/${calculation.rule.fruitLimit}` : "Frutas: preço por unidade em copinho separado de 100 ml"}</p>
             <IngredientGrid ingredients={availableFruits} selected={fruits} onToggle={toggleFruit} showPrices={false} includedLimit={calculation.rule.fruitLimit} extraLabel="Fruta extra" getExtraPrice={(item) => { const fruit = fruitOpts.find((f) => f.id === item.id); return fruit?.price ?? excess; }} />
-            <p className="text-sm font-bold text-purple-800 mt-5 mb-2">Cobertura incluída</p>
+            <p className="text-sm font-bold text-purple-800 mt-5 mb-2">Cobertura</p>
             <div className="grid grid-cols-2 gap-2">
+              <button onClick={() => setTopping(null)} className={`rounded-xl border px-3 py-2 text-left text-sm ${!topping ? "border-purple-700 bg-purple-50" : "border-purple-100"}`}>🚫 Sem cobertura{!topping && <Check size={14} className="inline ml-2 text-purple-700" />}</button>
               {TOPPING_OPTIONS.map((option) => <button key={option.id} onClick={() => setTopping(option)} className={`rounded-xl border px-3 py-2 text-left text-sm ${topping?.id === option.id ? "border-purple-700 bg-purple-50" : "border-purple-100"}`}>{option.name}{topping?.id === option.id && <Check size={14} className="inline ml-2 text-purple-700" />}</button>)}
             </div>
             <div className="mt-5 rounded-xl bg-purple-50 p-3 text-sm text-purple-800 space-y-1">
@@ -2411,7 +2416,7 @@ function CounterOrderModal({
   const [selectedSize, setSelectedSize] = useState(null);
   const [selectedIngredients, setSelectedIngredients] = useState([]);
   const [selectedFruits, setSelectedFruits] = useState([]);
-  const [selectedTopping, setSelectedTopping] = useState(TOPPING_OPTIONS[0]);
+  const [selectedTopping, setSelectedTopping] = useState(null);
   const [paymentMethod, setPaymentMethod] = useState("");
   
   const fruitOpts = fruitOptions || DEFAULT_FRUIT_OPTIONS;
@@ -2428,7 +2433,7 @@ function CounterOrderModal({
     setSelectedSize(null);
     setSelectedIngredients([]);
     setSelectedFruits([]);
-    setSelectedTopping(TOPPING_OPTIONS[0]);
+    setSelectedTopping(null);
   };
 
   const addItemToCart = () => {
@@ -2781,6 +2786,17 @@ function CounterOrderModal({
               <div>
                 <p className="text-sm font-semibold text-purple-800 mb-2">Cobertura</p>
                 <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => setSelectedTopping(null)}
+                    className={`p-2 rounded-lg border text-left text-sm transition-all ${
+                      !selectedTopping
+                        ? "border-purple-700 bg-purple-50"
+                        : "border-purple-200 bg-white hover:border-purple-300"
+                    }`}
+                  >
+                    <span className="font-medium">🚫 Sem cobertura</span>
+                    {!selectedTopping && <span className="ml-1">✓</span>}
+                  </button>
                   {TOPPING_OPTIONS.map((option) => (
                     <button
                       key={option.id}
@@ -3975,8 +3991,8 @@ function AdminOrdersTab({ orders, setOrders, showFinance = false }) {
                 <div key={index} className="border border-purple-300 rounded-lg p-2 mt-2 text-sm">
                   <p className="font-black">{item.qty}x {CATEGORY_LABEL[item.category] || item.category}</p>
                   <p className="font-bold">{item.category === "barca" ? (item.size === "grande" ? "Grande" : "Pequena") : `${item.size} ml`}</p>
-                  {item.topping?.name ? (
-                    <p className="text-center font-black uppercase border border-purple-900 py-0.5 mt-1">Cobertura: {item.topping.name}</p>
+                  {coberturaName(item) ? (
+                    <p className="text-center font-black uppercase border border-purple-900 py-0.5 mt-1">Cobertura: {coberturaName(item)}</p>
                   ) : (
                     <p className="text-center font-black uppercase bg-purple-950 text-white py-1 mt-1">🚫 Sem cobertura</p>
                   )}

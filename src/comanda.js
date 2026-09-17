@@ -70,10 +70,54 @@ function bulletList(labels) {
   return labels.map((label) => `<div class="bullet">• ${escapeHtml(label)}</div>`).join("");
 }
 
-/* Cobertura / ausência de cobertura — informação crítica de montagem */
+/* Cobertura / ausência de cobertura — informação crítica de montagem.
+   A cobertura é armazenada no campo `topping` de cada item.
+   - Com cobertura: `topping = { id, name, ... }`
+   - Sem cobertura: `topping = null` (ou ausente), ou ainda um objeto/string
+     com nome equivalente a "Sem cobertura" (defensivo para dados legados). */
+const SEM_COBERTURA_NAMES = new Set([
+  "sem cobertura",
+  "sem topping",
+  "sem",
+  "nenhuma",
+  "nenhum",
+  "não quer cobertura",
+  "nao quer cobertura",
+  "não quer",
+  "nao quer",
+  "no topping",
+  "without topping",
+  "none",
+  "n/a",
+]);
+
+export function coberturaName(item) {
+  const topping = item?.topping;
+  const name =
+    typeof topping === "string"
+      ? topping
+      : topping && typeof topping === "object" && typeof topping.name === "string"
+        ? topping.name
+        : "";
+  const trimmed = name.trim();
+  if (!trimmed) return null;
+  const key = trimmed
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9 ]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (SEM_COBERTURA_NAMES.has(key) || SEM_COBERTURA_NAMES.has(trimmed.toLowerCase())) {
+    return null;
+  }
+  return trimmed;
+}
+
 export function coberturaHtml(item) {
-  if (item.topping && item.topping.name) {
-    return `<div class="cobertura">COBERTURA: ${escapeHtml(String(item.topping.name).toUpperCase())}</div>`;
+  const name = coberturaName(item);
+  if (name) {
+    return `<div class="cobertura">COBERTURA: ${escapeHtml(name.toUpperCase())}</div>`;
   }
   return `<div class="no-cobertura">🚫 SEM COBERTURA</div>`;
 }
