@@ -1,0 +1,450 @@
+/* ============================================================
+  GERAÇÃO DA COMANDA IMPRESSA (80mm) — Açaí Boca Roxa
+  Módulo puro/determinístico: só monta o HTML da comanda.
+  Nenhuma lógica de pedido, carrinho, checkout, preço ou banco
+  é alterada aqui — apenas a apresentação da comanda.
+  ============================================================ */
+
+const LAYER_LABELS = ["1ª camada", "2ª camada", "3ª camada"];
+const MONTAGEM_LAYER_ORDER = [2, 1, 0];
+const CUP_CATEGORIES = ["acai", "cupuacu", "casadinho"];
+const CATEGORY_LABEL = {
+  acai: "Açaí",
+  cupuacu: "Cupuaçu",
+  casadinho: "Casadinho",
+  tigela: "Tigela",
+  barca: "Barca",
+};
+
+export function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+export function formatBRL(value) {
+  return Number(value || 0).toLocaleString("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  });
+}
+
+export function categoryLabel(category) {
+  return CATEGORY_LABEL[category] || String(category || "");
+}
+
+export function itemSizeText(category, size) {
+  if (category === "barca") {
+    return size === "grande" ? "Grande" : size === "pequena" ? "Pequena" : String(size || "");
+  }
+  if (size === undefined || size === null || size === "") return "";
+  return `${size} ml`;
+}
+
+export function itemTitle(item) {
+  return `${item.qty}x ${categoryLabel(item.category)}`.toUpperCase();
+}
+
+function ingredientDisplayList(item) {
+  const limit = item.calculation?.rule?.ingredientLimit;
+  return (item.ingredients || []).map((ing, index) =>
+    typeof limit === "number" && index >= limit ? `Ingrediente extra: ${ing.name}` : ing.name
+  );
+}
+
+function fruitDisplayList(item) {
+  const limit = item.calculation?.rule?.fruitLimit;
+  return (item.fruits || []).map((fruit, index) =>
+    typeof limit === "number" && index >= limit ? `Fruta extra: ${fruit.name}` : fruit.name
+  );
+}
+
+function isCupCategory(category) {
+  return CUP_CATEGORIES.includes(category);
+}
+
+function bulletList(labels) {
+  return labels.map((label) => `<div class="bullet">• ${escapeHtml(label)}</div>`).join("");
+}
+
+/* Cobertura / ausência de cobertura — informação crítica de montagem */
+export function coberturaHtml(item) {
+  if (item.topping && item.topping.name) {
+    return `<div class="cobertura">COBERTURA: ${escapeHtml(String(item.topping.name).toUpperCase())}</div>`;
+  }
+  return `<div class="no-cobertura">🚫 SEM COBERTURA</div>`;
+}
+
+/* Montagem do copo 700ml (camadas) */
+function layersHtml(item) {
+  let html = `<div class="sec-label">MONTAGEM EM CAMADAS:</div>`;
+  MONTAGEM_LAYER_ORDER.forEach((i) => {
+    const layer = item.layers[i];
+    const ingredients =
+      layer && Array.isArray(layer.ingredients) && layer.ingredients.length
+        ? layer.ingredients
+        : [];
+    html += `<div class="layer-label">${LAYER_LABELS[i]}:</div>`;
+    html += ingredients.length
+      ? bulletList(ingredients.map((ing) => ing.name))
+      : `<div class="bullet">• —</div>`;
+  });
+  if (item.extras && item.extras.length) {
+    html += `<div class="sec-label">COPO 100 ML — INGREDIENTES EXTRAS:</div>`;
+    html += bulletList(item.extras.map((extra) => extra.name));
+  }
+  if (item.fruits && item.fruits.length) {
+    html += `<div class="sec-label">COPO 100 ML — FRUTAS:</div>`;
+    html += bulletList(fruitDisplayList(item).map((label) => `${label} (copinho)`));
+  }
+  return html;
+}
+
+/* Lista de adicionais (ingredientes + frutas) exibida na comanda */
+export function adicionaisLabels(item) {
+  const bullets = [];
+  ingredientDisplayList(item).forEach((label) => bullets.push(label));
+  fruitDisplayList(item).forEach((label) => {
+    bullets.push(isCupCategory(item.category) ? `${label} (copinho)` : label);
+  });
+  return bullets;
+}
+
+/* Adicionais de produtos sem camadas */
+function simpleAdicionaisHtml(item) {
+  const bullets = adicionaisLabels(item);
+
+  let html = "";
+  if (bullets.length) {
+    html += `<div class="sec-label">ADICIONAIS:</div>`;
+    html += bulletList(bullets);
+  }
+  if (item.extras && item.extras.length) {
+    html += `<div class="sec-label">COPO 100 ML — INGREDIENTES EXTRAS:</div>`;
+    html += bulletList(item.extras.map((extra) => extra.name));
+  }
+  return html;
+}
+
+function priceNotesHtml(item) {
+  let html = "";
+  if (item.calculation?.ingredientExcessPrice > 0) {
+    html += `<div class="price-note">Ingrediente(s) extra(s): ${formatBRL(item.calculation.ingredientExcessPrice)}</div>`;
+  }
+  if (item.calculation?.fruitExcessPrice > 0) {
+    html += `<div class="price-note">Fruta(s) extra(s): ${formatBRL(item.calculation.fruitExcessPrice)}</div>`;
+  }
+  return html;
+}
+
+/* Bloco de um item da comanda */
+export function buildItemHtml(item) {
+  const totalPrice = Number(
+    (item.finalPrice ?? item.calculation?.total ?? 0) * (Number(item.qty) || 1) || 0
+  );
+  return `
+        <div class="item">
+          <div class="item-title">${escapeHtml(itemTitle(item))}</div>
+          ${itemSizeText(item.category, item.size) ? `<div class="item-size">${escapeHtml(itemSizeText(item.category, item.size))}</div>` : ""}
+          ${coberturaHtml(item)}
+          ${item.layers?.length === 3 ? layersHtml(item) : simpleAdicionaisHtml(item)}
+          ${priceNotesHtml(item)}
+          <div class="price">Preço: ${formatBRL(totalPrice)}</div>
+        </div>`;
+}
+
+/* ============================================================
+  Tipo/Origem do pedido (mesma regra já usada no site)
+  ============================================================ */
+export function orderSource(order) {
+  const source = String(
+    order?.orderSource || (order?.deliveryRegion === "Balcão" ? "balcão" : "") || ""
+  ).toLowerCase();
+  if (!source && order?.customer?.address) {
+    const addr = String(order.customer.address).toLowerCase();
+    if (addr.includes("comer no local") || addr.includes("para levar") || addr === "delivery" || addr === "balcão") {
+      return "balcão";
+    }
+    if (addr.includes("retirada")) return "retirada";
+  }
+  return source || "delivery";
+}
+
+export function orderTypeLabel(order) {
+  const source = orderSource(order);
+  if (source === "balcão" || source === "balcao") {
+    const addr = String(order?.customer?.address || "").toLowerCase();
+    if (addr === "delivery" || addr.includes("delivery")) return "Delivery";
+    return "Pedido no balcão";
+  }
+  if (source === "retirada") return "Retirada";
+  return "Delivery";
+}
+
+function metaHtml(order) {
+  const customer = order.customer || {};
+  const rows = [];
+
+  rows.push(`<div>Tipo: ${escapeHtml(orderTypeLabel(order))}</div>`);
+  rows.push(`<div>Cliente: ${escapeHtml(customer.name || "Não informado")}</div>`);
+  rows.push(`<div>Telefone: ${escapeHtml(customer.phone || "Não informado")}</div>`);
+  if (customer.address) rows.push(`<div>Endereço: ${escapeHtml(customer.address)}</div>`);
+  if (order.deliveryRegion) rows.push(`<div>Região: ${escapeHtml(order.deliveryRegion)}</div>`);
+  if (order.deliveryFee !== undefined && order.deliveryFee !== null) {
+    rows.push(`<div>Taxa de entrega: ${formatBRL(order.deliveryFee)}</div>`);
+  }
+  rows.push(`<div>Pagamento: ${escapeHtml(order.paymentMethod || "Não informado")}</div>`);
+
+  return `<div class="meta section">${rows.join("")}</div>`;
+}
+
+function observationHtml(order) {
+  const note = String(order.customer?.note || "").trim();
+  if (!note) return "";
+  return `
+        <div class="obs">
+          <div class="obs-label">📝 OBSERVAÇÃO DO PEDIDO:</div>
+          <div>${escapeHtml(note)}</div>
+        </div>`;
+}
+
+function totalsHtml(order) {
+  const deliveryFee = Number(order.deliveryFee ?? 0) || 0;
+  return `
+        <div class="section totals">
+          <div class="row"><span>Subtotal</span><span>${formatBRL(order.subtotal ?? 0)}</span></div>
+          <div class="row"><span>Taxa de entrega</span><span>${formatBRL(deliveryFee)}</span></div>
+          <div class="row total"><span>TOTAL</span><span>${formatBRL(order.total ?? 0)}</span></div>
+        </div>`;
+}
+
+/* Comanda completa (documento HTML isolado para a janela de impressão) */
+export function buildComandaHtml(order) {
+  const dateText = order.createdAt
+    ? new Date(order.createdAt).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })
+    : "Não informada";
+
+  const itemsHtml = (order.items || []).map(buildItemHtml).join("\n");
+
+  return `<!DOCTYPE html>
+    <html lang="pt-BR">
+      <head>
+        <meta charset="UTF-8">
+        <title>Pedido ${escapeHtml(order.id)}</title>
+        <style>
+          @page {
+            size: 80mm auto;
+            margin: 0;
+          }
+
+          * {
+            box-sizing: border-box;
+          }
+
+          html,
+          body {
+            margin: 0;
+            padding: 0;
+            width: 80mm;
+            background: #fff;
+          }
+
+          body {
+            font-family: "Courier New", monospace;
+            font-size: 10pt;
+            line-height: 1.28;
+            color: #000;
+            overflow-wrap: break-word;
+          }
+
+          .receipt {
+            width: 80mm;
+            padding: 3mm 3.5mm;
+          }
+
+          .roboto {
+            font-family: Arial, "Helvetica Neue", sans-serif;
+          }
+
+          .brand {
+            font-family: Arial, "Helvetica Neue", sans-serif;
+            font-size: 15pt;
+            font-weight: bold;
+            text-align: center;
+          }
+
+          .order-code {
+            font-family: Arial, "Helvetica Neue", sans-serif;
+            font-size: 12pt;
+            font-weight: bold;
+            text-align: center;
+            margin-top: 1.5mm;
+          }
+
+          .order-date {
+            font-size: 8.5pt;
+            text-align: center;
+            margin-top: 0.5mm;
+          }
+
+          .section {
+            border-top: 1px dashed #000;
+            margin-top: 2.5mm;
+            padding-top: 2.5mm;
+          }
+
+          .meta {
+            font-size: 9pt;
+          }
+
+          .meta div {
+            margin: 0.4mm 0;
+          }
+
+          .products-title {
+            font-family: Arial, "Helvetica Neue", sans-serif;
+            font-size: 11pt;
+            font-weight: bold;
+            text-align: center;
+          }
+
+          .item {
+            border: 1px solid #000;
+            padding: 2mm 2mm;
+            margin-top: 2.5mm;
+          }
+
+          .item-title {
+            font-family: Arial, "Helvetica Neue", sans-serif;
+            font-size: 12pt;
+            font-weight: bold;
+            text-transform: uppercase;
+          }
+
+          .item-size {
+            font-size: 10.5pt;
+            font-weight: bold;
+            margin-top: 0.5mm;
+          }
+
+          .cobertura {
+            border: 1px solid #000;
+            font-family: Arial, "Helvetica Neue", sans-serif;
+            font-size: 10.5pt;
+            font-weight: bold;
+            text-transform: uppercase;
+            text-align: center;
+            padding: 1mm;
+            margin: 1.2mm 0 1mm;
+          }
+
+          .no-cobertura {
+            background: #000;
+            color: #fff;
+            font-family: Arial, "Helvetica Neue", sans-serif;
+            font-size: 12pt;
+            font-weight: bold;
+            text-transform: uppercase;
+            text-align: center;
+            letter-spacing: 0.5px;
+            padding: 1.4mm;
+            margin: 1.2mm 0 1mm;
+          }
+
+          .sec-label {
+            font-weight: bold;
+            font-size: 9.5pt;
+            margin-top: 1.2mm;
+          }
+
+          .layer-label {
+            font-weight: bold;
+            margin-top: 0.8mm;
+          }
+
+          .bullet {
+            padding-left: 4mm;
+            text-indent: -4mm;
+          }
+
+          .price-note {
+            font-size: 8.5pt;
+            margin-top: 0.6mm;
+          }
+
+          .price {
+            font-size: 8.5pt;
+            text-align: right;
+            margin-top: 1mm;
+          }
+
+          .obs {
+            border: 2px solid #000;
+            padding: 1.5mm;
+            margin-top: 2.5mm;
+            font-size: 9.5pt;
+          }
+
+          .obs .obs-label {
+            font-family: Arial, "Helvetica Neue", sans-serif;
+            font-size: 10.5pt;
+            font-weight: bold;
+          }
+
+          .totals {
+            font-size: 9.5pt;
+          }
+
+          .row {
+            display: flex;
+            justify-content: space-between;
+            gap: 3mm;
+          }
+
+          .total {
+            font-size: 13pt;
+            font-weight: bold;
+            margin-top: 1mm;
+          }
+
+          .footer-note {
+            font-size: 8.5pt;
+            text-align: center;
+            margin-top: 2.5mm;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="receipt">
+
+          <div class="brand">Açaí Boca Roxa</div>
+          <div class="order-code roboto">PEDIDO #${escapeHtml(order.id)}</div>
+          <div class="order-date">Data: ${escapeHtml(dateText)}</div>
+
+          ${metaHtml(order)}
+
+          <div class="section">
+            <div class="products-title">PRODUTOS</div>
+            ${itemsHtml}
+          </div>
+
+          ${observationHtml(order)}
+
+          ${totalsHtml(order)}
+
+          <div class="footer-note">Confira a montagem antes de liberar o pedido.</div>
+
+        </div>
+
+        <script>
+          window.onload = function () {
+            window.focus();
+            window.print();
+          };
+        </script>
+      </body>
+    </html>`;
+}

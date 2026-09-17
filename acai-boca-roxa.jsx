@@ -10,6 +10,8 @@ import { supabase } from "./src/supabase.js";
 
 import { QRCodeSVG } from "qrcode.react";
 
+import { buildComandaHtml, adicionaisLabels } from "./src/comanda.js";
+
 let adminAudioContext;
 let audioContextInitialized = false;
 
@@ -2379,86 +2381,6 @@ function AdminExtrasTab({ config, setConfig, fruitOptions, setFruitOptions, exce
 function printOrder(order) {
   if (!order) return;
 
-  const escapeHtml = (value) =>
-    String(value ?? "")
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#039;");
-
-  const dateText = order.createdAt
-    ? new Date(order.createdAt).toLocaleString("pt-BR", {
-        timeZone: "America/Sao_Paulo",
-      })
-    : "Não informada";
-
-  const itemsHtml = (order.items || [])
-    .map((item) => {
-      const itemName = `${item.qty}x ${itemLabel(item.category, item.size)}`;
-
-      return `
-        <div class="item">
-          <div class="bold">${escapeHtml(itemName)}</div>
-
-          ${
-            item.layers?.length === 3
-              ? [2, 1, 0].map((i) => `<div class="bold">${escapeHtml(LAYER_LABELS[i])}:</div>${item.layers[i]?.ingredients?.length ? item.layers[i].ingredients.map((ing) => `<div>- ${escapeHtml(ing.name)}</div>`).join("") : "<div>- —</div>"}`).join("")
-                + (item.extras?.length ? `<div class="bold">Ingredientes extras — copinho 100 ml:</div>${item.extras.map((extra) => `<div>- ${escapeHtml(extra.name)}</div>`).join("")}` : "")
-                + (item.fruits?.length ? `<div class="bold">Frutas extras — copinho 100 ml:</div>${getFruitDisplayList(item).map((label) => `<div>- ${escapeHtml(label)}</div>`).join("")}` : "")
-              : ""
-          }
-
-          ${
-            !item.layers
-              ? (item.ingredients?.length
-                  ? `<div>Ingredientes:</div>${getIngredientDisplayList(item)
-                      .map((label) => `<div>- ${escapeHtml(label)}</div>`)
-                      .join("")}`
-                  : "")
-                + (item.extras?.length
-                  ? `<div>Ingredientes extras — copinho 100 ml:</div>${item.extras
-                      .map((extra) => `<div>- ${escapeHtml(extra.name)}</div>`)
-                      .join("")}`
-                  : "")
-                + (item.fruits?.length
-                  ? `<div>Frutas:</div>${getFruitDisplayList(item)
-                      .map((label) => `<div>- ${escapeHtml(label)}</div>`)
-                      .join("")}`
-                  : "")
-              : ""
-          }
-
-          ${
-            item.topping
-              ? `<div>Cobertura: ${escapeHtml(item.topping.name)}</div>`
-              : ""
-          }
-
-          ${
-            item.calculation?.ingredientExcessPrice > 0
-              ? `<div>Ingredientes extras: ${formatBRL(
-                  item.calculation.ingredientExcessPrice
-                )}</div>`
-              : ""
-          }
-
-          ${
-            item.calculation?.fruitExcessPrice > 0
-              ? `<div>Frutas extras: ${formatBRL(
-                  item.calculation.fruitExcessPrice
-                )}</div>`
-              : ""
-          }
-
-          <div>Preço: ${formatBRL(
-            (item.finalPrice ?? item.calculation?.total ?? 0) * item.qty
-          )}</div>
-        </div>
-      `;
-    })
-    .join("");
-
   const printWindow = window.open("", "_blank", "width=400,height=800");
 
   if (!printWindow) {
@@ -2468,182 +2390,7 @@ function printOrder(order) {
 
   printWindow.document.open();
 
-  printWindow.document.write(`
-    <!DOCTYPE html>
-    <html lang="pt-BR">
-      <head>
-        <meta charset="UTF-8">
-        <title>Pedido ${escapeHtml(order.id)}</title>
-
-        <style>
-          @page {
-            size: 80mm auto;
-            margin: 0;
-          }
-
-          * {
-            box-sizing: border-box;
-          }
-
-          html,
-          body {
-            margin: 0;
-            padding: 0;
-            width: 80mm;
-            background: #fff;
-          }
-
-          body {
-            font-family: "Courier New", monospace;
-            font-size: 10pt;
-            line-height: 1.3;
-            color: #000;
-          }
-
-          .receipt {
-            width: 80mm;
-            padding: 3mm 4mm;
-          }
-
-          .center {
-            text-align: center;
-          }
-
-          .bold {
-            font-weight: bold;
-          }
-
-          .title {
-            font-size: 15pt;
-            font-weight: bold;
-            margin-bottom: 3mm;
-          }
-
-          .section {
-            border-top: 1px dashed #000;
-            margin-top: 3mm;
-            padding-top: 3mm;
-          }
-
-          .item {
-            margin-bottom: 3mm;
-            padding-bottom: 2mm;
-            border-bottom: 1px dashed #999;
-          }
-
-          .row {
-            display: flex;
-            justify-content: space-between;
-            gap: 4mm;
-          }
-
-          .total {
-            font-size: 13pt;
-            font-weight: bold;
-            margin-top: 2mm;
-          }
-
-          .small {
-            font-size: 8.5pt;
-          }
-        </style>
-      </head>
-
-      <body>
-        <div class="receipt">
-
-          <div class="center title">
-            Açaí Boca Roxa
-          </div>
-
-          <div>
-            <div><strong>Pedido:</strong> ${escapeHtml(order.id)}</div>
-            <div><strong>Data:</strong> ${escapeHtml(dateText)}</div>
-          </div>
-
-          <div class="section">
-            <div><strong>Cliente:</strong> ${escapeHtml(
-              order.customer?.name || "Não informado"
-            )}</div>
-
-            <div><strong>Telefone:</strong> ${escapeHtml(
-              order.customer?.phone || "Não informado"
-            )}</div>
-
-            ${
-              order.customer?.address
-                ? `<div><strong>Endereço:</strong> ${escapeHtml(
-                    order.customer.address
-                  )}</div>`
-                : ""
-            }
-
-            ${
-              order.deliveryRegion
-                ? `<div><strong>Região:</strong> ${escapeHtml(
-                    order.deliveryRegion
-                  )}</div>`
-                : ""
-            }
-
-            ${
-              order.deliveryFee !== undefined
-                ? `<div><strong>Taxa entrega:</strong> ${formatBRL(
-                    order.deliveryFee
-                  )}</div>`
-                : ""
-            }
-
-            <div><strong>Pagamento:</strong> ${escapeHtml(
-              order.paymentMethod || "Não informado"
-            )}</div>
-          </div>
-
-          <div class="section">
-            <div class="bold">PRODUTOS</div>
-            <br>
-            ${itemsHtml}
-          </div>
-
-          <div class="section">
-            <div class="row">
-              <strong>Subtotal</strong>
-              <span>${formatBRL(order.subtotal ?? 0)}</span>
-            </div>
-
-            <div class="row">
-              <strong>Taxa entrega</strong>
-              <span>${formatBRL(order.deliveryFee ?? 0)}</span>
-            </div>
-
-            <div class="row total">
-              <strong>TOTAL</strong>
-              <strong>${formatBRL(order.total ?? 0)}</strong>
-            </div>
-          </div>
-
-          ${
-            order.customer?.note
-              ? `
-                <div class="section small">
-                  <strong>Observação:</strong><br>
-                  ${escapeHtml(order.customer.note)}
-                </div>
-              `
-              : ""
-          }
-
-        </div>
-
-        <script>
-          window.onload = function () {
-            window.focus();
-            window.print();
-          };
-        </script>
-      </body>
-    </html>
-  `);
+  printWindow.document.write(buildComandaHtml(order));
 
   printWindow.document.close();
 }
@@ -4207,54 +3954,68 @@ function AdminOrdersTab({ orders, setOrders, showFinance = false }) {
               Este pedido foi cancelado e não é considerado nas vendas válidas. Os dados e o valor original foram preservados.
             </p>
           )}
-          <div className="print-order space-y-4 text-purple-950">
-            <div className="border-b border-purple-200 pb-3">
-              <h1 className="text-xl font-black">Açaí Boca Roxa</h1>
-              <p className="text-sm">Pedido: {selectedOrder.id}</p>
-              <p className="text-sm">Data: {selectedOrder.createdAt ? new Date(selectedOrder.createdAt).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" }) : "Não informada"}</p>
+          <div className="print-order space-y-3 text-purple-950">
+            <div className="text-center border-b border-purple-200 pb-3">
+              <h1 className="text-2xl font-black">Açaí Boca Roxa</h1>
+              <p className="text-xl font-black mt-1">PEDIDO #{selectedOrder.id}</p>
+              <p className="text-xs">Data: {selectedOrder.createdAt ? new Date(selectedOrder.createdAt).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" }) : "Não informada"}</p>
             </div>
-            <div className="space-y-1 text-sm">
-              <p><strong>Cliente:</strong> {selectedOrder.customer?.name || "Não informado"}</p>
+            <div className="space-y-0.5 text-xs">
               <p><strong>Tipo:</strong> {getOrderTypeLabel(selectedOrder)}</p>
+              <p><strong>Cliente:</strong> {selectedOrder.customer?.name || "Não informado"}</p>
               <p><strong>Telefone:</strong> {selectedOrder.customer?.phone || "Não informado"}</p>
               {selectedOrder.customer?.address && <p><strong>Endereço:</strong> {selectedOrder.customer.address}</p>}
               {selectedOrder.deliveryRegion && <p><strong>Região:</strong> {selectedOrder.deliveryRegion}</p>}
               {selectedOrder.deliveryFee !== undefined && <p><strong>Taxa de entrega:</strong> {formatBRL(selectedOrder.deliveryFee)}</p>}
               <p><strong>Pagamento:</strong> {selectedOrder.paymentMethod || "Não informado"}</p>
             </div>
-            <div className="border-t border-purple-200 pt-3 space-y-3">
-              <h2 className="font-bold">Produtos</h2>
+            <div className="border-t border-purple-200 pt-3">
+              <h2 className="font-bold text-center">Produtos</h2>
               {selectedOrder.items?.map((item, index) => (
-                <div key={index} className="border-b border-purple-100 pb-3 text-sm">
-                  <p className="font-bold">{item.qty}x {itemLabel(item.category, item.size)}</p>
+                <div key={index} className="border border-purple-300 rounded-lg p-2 mt-2 text-sm">
+                  <p className="font-black">{item.qty}x {CATEGORY_LABEL[item.category] || item.category}</p>
+                  <p className="font-bold">{item.category === "barca" ? (item.size === "grande" ? "Grande" : "Pequena") : `${item.size} ml`}</p>
+                  {item.topping?.name ? (
+                    <p className="text-center font-black uppercase border border-purple-900 py-0.5 mt-1">Cobertura: {item.topping.name}</p>
+                  ) : (
+                    <p className="text-center font-black uppercase bg-purple-950 text-white py-1 mt-1">🚫 Sem cobertura</p>
+                  )}
                   {item.layers?.length === 3 ? (
-                    <div className="space-y-0.5">
+                    <div className="mt-1 space-y-0.5">
                       {[2, 1, 0].map((i) => (
                         <p key={LAYER_LABELS[i]}><strong>{LAYER_LABELS[i]}:</strong> {item.layers[i]?.ingredients?.length ? item.layers[i].ingredients.map((ing) => ing.name).join(", ") : "—"}</p>
                       ))}
-                      {item.extras?.length > 0 && <p><strong>Ingredientes extras (copinho 100 ml):</strong> {item.extras.map((extra) => extra.name).join(", ")}</p>}
-                      {item.fruits?.length > 0 && <p><strong>Frutas extras (copinho 100 ml):</strong> {item.fruits.map((fruit) => fruit.name).join(", ")}</p>}
+                      {item.extras?.length > 0 && <p><strong>Copo 100 ml — ingredientes extras:</strong> {item.extras.map((extra) => extra.name).join(", ")}</p>}
+                      {item.fruits?.length > 0 && <p><strong>Copo 100 ml — frutas:</strong> {getFruitDisplayList(item).map((label) => `${label} (copinho)`).join(", ")}</p>}
                     </div>
                   ) : (
-                    <>
-                      {item.ingredients?.length > 0 && (
-                        <p><strong>Ingredientes:</strong> {getIngredientDisplayList(item).join(", ")}</p>
+                    <div className="mt-1 space-y-0.5">
+                      {adicionaisLabels(item).length > 0 && (
+                        <>
+                          <p className="font-bold">Adicionais:</p>
+                          {adicionaisLabels(item).map((label, idx) => <p key={idx}>• {label}</p>)}
+                        </>
                       )}
                       {item.extras?.length > 0 && (
-                        <p><strong>Ingredientes extras (copinho 100 ml):</strong> {item.extras.map((extra) => extra.name).join(", ")}</p>
+                        <>
+                          <p className="font-bold">Copo 100 ml — ingredientes extras:</p>
+                          {item.extras.map((extra, idx) => <p key={idx}>• {extra.name}</p>)}
+                        </>
                       )}
-                      {item.fruits?.length > 0 && (
-                        <p><strong>Frutas:</strong> {getFruitDisplayList(item).join(", ")}</p>
-                      )}
-                    </>
+                    </div>
                   )}
-                  {item.topping && <p><strong>Cobertura:</strong> {item.topping.name}</p>}
-                  {item.calculation?.ingredientExcessPrice > 0 && <p><strong>Ingredientes extras:</strong> {formatBRL(item.calculation.ingredientExcessPrice)}</p>}
-                  {item.calculation?.fruitExcessPrice > 0 && <p><strong>Frutas extras:</strong> {formatBRL(item.calculation.fruitExcessPrice)}</p>}
-                  <p><strong>Preço individual:</strong> {formatBRL((item.finalPrice ?? item.calculation?.total ?? 0) * item.qty)}</p>
+                  {item.calculation?.ingredientExcessPrice > 0 && <p className="text-xs"><strong>Ingredientes extras:</strong> {formatBRL(item.calculation.ingredientExcessPrice)}</p>}
+                  {item.calculation?.fruitExcessPrice > 0 && <p className="text-xs"><strong>Frutas extras:</strong> {formatBRL(item.calculation.fruitExcessPrice)}</p>}
+                  <p className="text-right text-xs mt-1"><strong>Preço:</strong> {formatBRL((item.finalPrice ?? item.calculation?.total ?? 0) * item.qty)}</p>
                 </div>
               ))}
             </div>
+            {selectedOrder.customer?.note && (
+              <div className="border-2 border-purple-900 rounded-lg p-2 text-sm">
+                <p className="font-black">📝 Observação do pedido:</p>
+                <p>{selectedOrder.customer.note}</p>
+              </div>
+            )}
             <div className="space-y-1 border-t-2 border-purple-900 pt-3 text-sm">
               <p className="flex justify-between"><strong>Subtotal</strong><span>{formatBRL(selectedOrder.subtotal)}</span></p>
               <p className="flex justify-between"><strong>Taxa de entrega</strong><span>{formatBRL(selectedOrder.deliveryFee)}</span></p>

@@ -53,7 +53,7 @@
     background: #fff !important;
 
     font-family: "Courier New", monospace !important;
-    font-size: 9pt !important;
+    font-size: 9.5pt !important;
     line-height: 1.25 !important;
 
     overflow-wrap: anywhere !important;
@@ -62,7 +62,7 @@
   .print-order h1 {
     font-size: 14pt !important;
     line-height: 1.15 !important;
-    margin: 0 0 2mm !important;
+    margin: 0 0 1mm !important;
     text-align: center !important;
   }
 
@@ -73,6 +73,27 @@
 
   .print-order p {
     margin: 0 0 1mm !important;
+  }
+
+  .print-order .bg-purple-950 {
+    background: #000 !important;
+  }
+
+  .print-order .bg-purple-950,
+  .print-order .bg-purple-950 * {
+    color: #fff !important;
+  }
+
+  .print-order .font-black {
+    font-size: 11pt !important;
+  }
+
+  .print-order .font-black.text-xl {
+    font-size: 12.5pt !important;
+  }
+
+  .print-order .font-black.text-2xl {
+    font-size: 14pt !important;
   }
 
   .print-order > div {
