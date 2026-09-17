@@ -568,13 +568,6 @@ async function disablePushNotifications() {
     normalmente, sem marcação de extra.
     ============================================================ */
 
-  function getIngredientDisplayList(item) {
-    const limit = item.calculation?.rule?.ingredientLimit;
-    return (item.ingredients || []).map((ing, index) =>
-      typeof limit === "number" && index >= limit ? `Ingrediente extra: ${ing.name}` : ing.name
-    );
-  }
-
   function getFruitDisplayList(item) {
     const limit = item.calculation?.rule?.fruitLimit;
     return (item.fruits || []).map((fruit, index) =>
@@ -593,69 +586,6 @@ async function disablePushNotifications() {
 
   function generateOrderId() {
     return `${Date.now()}${Math.floor(100 + Math.random() * 900)}`;
-  }
-
-  function buildWhatsAppMessage(cart, customer, prices, subtotal, deliveryFee, orderId = null) {
-    const lines = [];
-    const isRetirada = customer.deliveryRegion === "Retirada";
-
-    lines.push("Olá! Gostaria de fazer um pedido na Açaí Boca Roxa.");
-    lines.push("");
-    lines.push(isRetirada ? "🥡 Pedido para retirada:" : "🚗 Pedido para entrega:");
-    lines.push("");
-    lines.push("Pedido:");
-    cart.forEach((item) => {
-      lines.push(`${item.qty}x ${itemLabel(item.category, item.size)}`);
-      if (item.layers?.length === 3) {
-        [2, 1, 0].forEach((i) => {
-          lines.push(`${LAYER_LABELS[i]}: ${item.layers[i]?.ingredients?.length ? item.layers[i].ingredients.map((x) => x.name).join(", ") : "—"}`);
-        });
-        if (item.extras?.length) {
-          lines.push(`Ingredientes extras — copinho 100 ml: ${item.extras.map((x) => x.name).join(", ")}`);
-        }
-        if (item.fruits?.length) {
-          lines.push("Frutas extras — copinho 100 ml:");
-          getFruitDisplayList(item).forEach((label) => lines.push(`- ${label}`));
-        }
-      } else {
-        if (item.ingredients?.length) {
-          lines.push("Ingredientes:");
-          getIngredientDisplayList(item).forEach((label) => lines.push(`- ${label}`));
-        }
-        if (item.extras?.length) {
-          lines.push("Ingredientes extras — copinho 100 ml:");
-          item.extras.forEach((x) => lines.push(`- ${x.name}`));
-        }
-        if (item.fruits?.length) {
-          lines.push("Frutas (copinho separado de 100 ml quando aplicável):");
-          getFruitDisplayList(item).forEach((label) => lines.push(`- ${label}`));
-        }
-      }
-      if (item.topping) lines.push(`Cobertura: ${item.topping.name} (incluída)`);
-      if (item.calculation?.ingredientExcessPrice) lines.push(`Ingredientes extras: ${formatBRL(item.calculation.ingredientExcessPrice)}`);
-      if (item.calculation?.fruitExcessPrice) lines.push(`Frutas extras: ${formatBRL(item.calculation.fruitExcessPrice)}`);
-      lines.push(`Subtotal do item: ${formatBRL(unitPrice(item, prices))}`);
-    });
-    const total = subtotal + deliveryFee;
-    lines.push("");
-    lines.push(`Subtotal dos produtos: ${formatBRL(subtotal)}`);
-    if (isRetirada) {
-      lines.push(`Taxa de entrega: Grátis (Retirada)`);
-    } else {
-      lines.push(`Taxa de entrega (${customer.deliveryRegion}): ${formatBRL(deliveryFee)}`);
-    }
-    lines.push(`Total: ${formatBRL(total)}`);
-    lines.push("");
-    lines.push(`Nome: ${customer.name || "-"}`);
-    lines.push(`Endereço: ${isRetirada ? "Retirada no local" : (customer.address || "-")}`);
-    lines.push(`Forma de pagamento: ${customer.payment || "-"}`);
-    lines.push(`Observação: ${customer.note || "-"}`);
-    if (orderId) {
-      lines.push("");
-      lines.push(`📋 Código do pedido: ${orderId}`);
-      lines.push("Use este código para acompanhar o status do pedido no site.");
-    }
-    return lines.join("\n");
   }
 
   /* ============================================================
@@ -1235,7 +1165,7 @@ async function disablePushNotifications() {
             </button>
           </form>
           <p className="mt-4 text-sm text-purple-500 text-center">
-            O código do pedido foi enviado pelo WhatsApp após a confirmação.
+            O código do pedido aparece na tela após você confirmar o pedido.
           </p>
         </div>
       </section>
@@ -1458,7 +1388,7 @@ function generatePixPayload(amount) {
     <Modal title="Acompanhar pedido" onClose={onClose}>
       <div className="space-y-6">
         <div className="bg-purple-50 rounded-xl p-4">
-          <p className="text-sm text-purple-600">Pedido #<span className="font-bold text-purple-950">{order.id.slice(-8)}</span></p>
+          <p className="text-sm text-purple-600">Pedido #<span className="font-bold text-purple-950">{order.id}</span></p>
           <p className="text-lg font-bold text-purple-950 mt-1">
             Status atual: {statusSteps[currentStepIndex]?.label || order.status}
           </p>
@@ -1510,7 +1440,7 @@ function generatePixPayload(amount) {
   );
 }
 
-function CheckoutModal({ cart, prices, config, deliveryStatus, onClose, onSent }) {
+function CheckoutModal({ cart, prices, deliveryStatus, onClose, onSent }) {
     const [form, setForm] = useState({ name: "", phone: "", address: "", note: "", payment: "", deliveryRegion: "" });
     const [orderType, setOrderType] = useState("delivery"); // "delivery" ou "retirada"
     const [submitError, setSubmitError] = useState("");
@@ -1522,13 +1452,9 @@ function CheckoutModal({ cart, prices, config, deliveryStatus, onClose, onSent }
     const setPhone = (e) => setForm((f) => ({ ...f, phone: e.target.value.replace(/\D/g, "") }));
     const canSend = form.name.trim() && form.phone.trim() && form.payment && (orderType === "retirada" || (form.address.trim() && deliveryFee !== undefined)) && deliveryStatus.open;
 
-    // IMPORTANTE: o WhatsApp é aberto de forma síncrona, antes de qualquer
-    // "await", para abrir imediatamente após o clique (alguns navegadores,
-    // principalmente no celular, só permitem window.open sem bloqueio de
-    // pop-up quando ele acontece dentro do mesmo gesto de clique do
-    // usuário). O registro no Supabase acontece depois, sem atrasar o
-    // WhatsApp.
-    const handleSend = () => {
+    // O pedido é enviado 100% pelo site: valida, salva no Supabase e só então
+    // confirma para o cliente. O WhatsApp não é mais usado para finalizar o pedido.
+    const handleSend = async () => {
       if (sending) return; // proteção contra cliques repetidos
       setSubmitError("");
       if (!deliveryStatus.open) {
@@ -1539,29 +1465,22 @@ function CheckoutModal({ cart, prices, config, deliveryStatus, onClose, onSent }
       setSending(true);
 
       const orderId = generateOrderId();
-      const msg = buildWhatsAppMessage(cart, form, prices, subtotal, deliveryFee, orderId);
-      const whatsappWindow = window.open(`https://wa.me/${config.whatsapp}?text=${encodeURIComponent(msg)}`, "_blank");
-
-      if (!whatsappWindow) {
-        setSending(false);
-        setSubmitError("O navegador bloqueou a abertura do WhatsApp. Permita pop-ups para este site e tente novamente.");
-        return;
-      }
-
-      // A partir daqui o pedido é registrado no Supabase em segundo plano.
-      (async () => {
+      try {
         const result = await onSent(form, subtotal, deliveryFee, orderType, orderId);
-        setSending(false);
 
         if (!result?.ok) {
-          setSubmitError(
-            `O pedido foi enviado pelo WhatsApp, mas houve um problema ao registrar no sistema (${result?.message || "erro desconhecido"}). Guarde o código ${orderId} e entre em contato com a loja para confirmar.`
-          );
+          setSubmitError(result?.message || "Não foi possível enviar o pedido. Tente novamente.");
           return;
         }
 
+        // Pedido salvo com sucesso: cliente continua no site e acompanha o status.
         onClose();
-      })();
+        alert(`✅ PEDIDO ENVIADO!\n\nSeu pedido foi recebido com sucesso.\nCódigo do pedido: ${orderId}\n\nAcompanhe o status do seu pedido aqui pelo site.`);
+      } catch {
+        setSubmitError("Não foi possível enviar o pedido. Tente novamente.");
+      } finally {
+        setSending(false);
+      }
     };
 
     return (
@@ -1570,7 +1489,7 @@ function CheckoutModal({ cart, prices, config, deliveryStatus, onClose, onSent }
         onClose={onClose}
         footer={
           <button disabled={!canSend || sending} onClick={handleSend} className={`w-full py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 transition-all ${canSend && !sending ? "bg-purple-800 text-white hover:bg-purple-900 active:scale-[.98]" : "bg-purple-100 text-purple-400 cursor-not-allowed"}`}>
-            <MessageCircle size={18} /> {sending ? "Enviando..." : deliveryStatus.open ? "Enviar pedido pelo WhatsApp" : "Delivery fechado"}
+            <Check size={18} /> {sending ? "Enviando..." : deliveryStatus.open ? "Confirmar pedido" : "Delivery fechado"}
           </button>
         }
       >
@@ -1707,7 +1626,7 @@ function CheckoutModal({ cart, prices, config, deliveryStatus, onClose, onSent }
 </button>
 
         <p className="mt-2 text-[11px] text-emerald-700">
-          Após realizar o pagamento, envie o pedido pelo WhatsApp.
+          Após realizar o pagamento, confirme o pedido abaixo para finalizar.
         </p>
       </div>
     ) : (
@@ -1760,7 +1679,7 @@ function Contact({ config }) {
         <h2 className="text-3xl sm:text-4xl font-black text-purple-950 text-center" style={{ fontFamily: "'Fraunces', serif" }}>Contato</h2>
         <div className="mt-8 grid sm:grid-cols-2 gap-4">
           <a href={`https://wa.me/${config.whatsapp}`} target="_blank" rel="noreferrer" className="flex items-center gap-3 bg-white rounded-2xl p-4 border border-purple-100 hover:border-purple-300 transition-colors">
-            <MessageCircle className="text-purple-700" /><div><p className="font-bold text-purple-950">WhatsApp</p><p className="text-sm text-purple-500">Peça diretamente por lá</p></div>
+            <MessageCircle className="text-purple-700" /><div><p className="font-bold text-purple-950">WhatsApp</p><p className="text-sm text-purple-500">Fale com a loja por aqui</p></div>
           </a>
           <a href="https://www.instagram.com/acaibocaroxa.bsb/" target="_blank" rel="noreferrer" className="flex items-center gap-3 bg-white rounded-2xl p-4 border border-purple-100 hover:border-purple-300 transition-colors">
             <Camera className="text-purple-700" /><div><p className="font-bold text-purple-950">Instagram</p><p className="text-sm text-purple-500">{config.instagram}</p></div>
@@ -4605,7 +4524,7 @@ useEffect(() => {
       )}
 
       {checkoutOpen && (
-        <CheckoutModal cart={cart} prices={prices} config={config} deliveryStatus={deliveryStatus} onClose={() => setCheckoutOpen(false)} onSent={handleOrderSent} />
+        <CheckoutModal cart={cart} prices={prices} deliveryStatus={deliveryStatus} onClose={() => setCheckoutOpen(false)} onSent={handleOrderSent} />
       )}
 
       {orderTrackingOpen && trackingOrderId && (
