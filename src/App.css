@@ -34,6 +34,7 @@
   .print-order,
   .print-order * {
     visibility: visible !important;
+    font-weight: 700 !important;
   }
 
   .print-order {

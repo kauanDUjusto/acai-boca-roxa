@@ -322,6 +322,7 @@ export function buildComandaHtml(order) {
             font-size: 10pt;
             line-height: 1.28;
             color: #000;
+            font-weight: bold;
             overflow-wrap: break-word;
           }
 
@@ -347,10 +348,14 @@ export function buildComandaHtml(order) {
             font-weight: bold;
             text-align: center;
             margin-top: 1.5mm;
+            background: #000;
+            color: #fff;
+            padding: 1.2mm 2mm;
           }
 
           .order-date {
-            font-size: 8.5pt;
+            font-size: 9pt;
+            font-weight: bold;
             text-align: center;
             margin-top: 0.5mm;
           }
@@ -362,7 +367,7 @@ export function buildComandaHtml(order) {
           }
 
           .meta {
-            font-size: 9pt;
+            font-size: 9.5pt;
           }
 
           .meta div {
@@ -463,7 +468,7 @@ export function buildComandaHtml(order) {
 
           .adicionais .bullet {
             font-weight: bold;
-            font-size: 10pt;
+            font-size: 10.5pt;
           }
 
           .sec-label {
@@ -491,12 +496,12 @@ export function buildComandaHtml(order) {
           }
 
           .price-note {
-            font-size: 8.5pt;
+            font-size: 9pt;
             margin-top: 0.6mm;
           }
 
           .price {
-            font-size: 8.5pt;
+            font-size: 9pt;
             text-align: right;
             margin-top: 1mm;
           }
@@ -528,7 +533,7 @@ export function buildComandaHtml(order) {
           }
 
           .totals {
-            font-size: 9.5pt;
+            font-size: 10pt;
             page-break-inside: avoid;
             break-inside: avoid;
           }
@@ -537,14 +542,16 @@ export function buildComandaHtml(order) {
             display: flex;
             justify-content: space-between;
             gap: 3mm;
+            font-weight: bold;
           }
 
           .total {
-            font-size: 12.5pt;
+            font-size: 13pt;
             font-weight: bold;
-            margin-top: 1.5mm;
-            border-top: 2px solid #000;
-            padding-top: 1mm;
+            margin-top: 2mm;
+            background: #000;
+            color: #fff;
+            padding: 1.4mm 1.5mm;
           }
 
           .footer-note {
