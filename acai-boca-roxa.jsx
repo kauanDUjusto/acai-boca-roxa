@@ -223,7 +223,7 @@ async function disablePushNotifications() {
     "Ermida Dom Bosco": 15,
     "Del Lago 11": 6,
     "Baixinho": 7,
-    "Cond. La Font": 8,
+    "Cond. La Font": 9,
     "Cond. Entre Lagos": 8,
     "Cond. Novo Horizonte": 7,
     "Cond. Porto Seguro": 10,
