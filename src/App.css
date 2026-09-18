@@ -77,12 +77,13 @@
   }
 
   .print-order .bg-purple-950 {
-    background: #000 !important;
+    background: #fff !important;
+    border: 1px solid #000 !important;
   }
 
   .print-order .bg-purple-950,
   .print-order .bg-purple-950 * {
-    color: #fff !important;
+    color: #000 !important;
   }
 
   .print-order .font-black {

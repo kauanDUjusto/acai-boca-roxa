@@ -345,12 +345,14 @@ export function buildComandaHtml(order) {
           .order-code {
             font-family: Arial, "Helvetica Neue", sans-serif;
             font-size: 12pt;
-            font-weight: bold;
+            font-weight: 800;
             text-align: center;
             margin-top: 1.5mm;
-            background: #000;
-            color: #fff;
-            padding: 1.2mm 2mm;
+            color: #000;
+            background: #fff;
+            border-top: 2px solid #000;
+            border-bottom: 2px solid #000;
+            padding: 1mm 2mm;
           }
 
           .order-date {
@@ -396,13 +398,14 @@ export function buildComandaHtml(order) {
           }
 
           .qty {
-            background: #000;
-            color: #fff;
+            color: #000;
+            background: #fff;
             font-family: Arial, "Helvetica Neue", sans-serif;
             font-size: 12pt;
             font-weight: bold;
             line-height: 1.15;
-            padding: 0.8mm 2mm;
+            border: 1px solid #000;
+            padding: 0.5mm 1.6mm;
           }
 
           .product-name {
@@ -421,28 +424,30 @@ export function buildComandaHtml(order) {
           }
 
           .cobertura {
-            background: #000;
-            color: #fff;
+            color: #000;
+            background: #fff;
             font-family: Arial, "Helvetica Neue", sans-serif;
             font-size: 11pt;
-            font-weight: bold;
+            font-weight: 800;
             text-transform: uppercase;
             text-align: center;
             letter-spacing: 0.5px;
-            padding: 1.3mm;
+            border: 2px solid #000;
+            padding: 1.2mm;
             margin: 1.8mm 0 1.2mm;
           }
 
           .no-cobertura {
-            background: #000;
-            color: #fff;
+            color: #000;
+            background: #fff;
             font-family: Arial, "Helvetica Neue", sans-serif;
             font-size: 13pt;
-            font-weight: bold;
+            font-weight: 800;
             text-transform: uppercase;
             text-align: center;
             letter-spacing: 1px;
-            padding: 1.8mm;
+            border: 2px solid #000;
+            padding: 1.6mm;
             margin: 1.8mm 0 1.2mm;
           }
 
@@ -515,14 +520,15 @@ export function buildComandaHtml(order) {
           }
 
           .obs .obs-label {
-            background: #000;
-            color: #fff;
+            color: #000;
+            background: #fff;
             text-align: center;
             font-family: Arial, "Helvetica Neue", sans-serif;
-            font-size: 10.5pt;
-            font-weight: bold;
+            font-size: 11pt;
+            font-weight: 800;
             text-transform: uppercase;
             letter-spacing: 0.5px;
+            border-bottom: 1px solid #000;
             padding: 1mm;
           }
 
@@ -547,11 +553,13 @@ export function buildComandaHtml(order) {
 
           .total {
             font-size: 13pt;
-            font-weight: bold;
+            font-weight: 800;
             margin-top: 2mm;
-            background: #000;
-            color: #fff;
-            padding: 1.4mm 1.5mm;
+            color: #000;
+            background: #fff;
+            border-top: 2px solid #000;
+            border-bottom: 2px solid #000;
+            padding: 1.2mm 1.5mm;
           }
 
           .footer-note {
